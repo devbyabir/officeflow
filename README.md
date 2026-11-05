@@ -10,7 +10,7 @@ Java final project at Zhengzhou University.
 [![Open Live Demo](https://img.shields.io/badge/OPEN_LIVE_DEMO-OfficeFlow-3B5BDB?style=for-the-badge&logo=githubpages&logoColor=white)](https://devbyabir.github.io/officeflow/)
 [![Application checks](https://github.com/devbyabir/officeflow/actions/workflows/checks.yml/badge.svg)](https://github.com/devbyabir/officeflow/actions/workflows/checks.yml)
 
-Java 17+ Â· JDBC Â· H2 Â· JavaScript Â· GitHub Pages
+Java 17+ | JDBC | H2 | JavaScript | GitHub Pages
 
 </div>
 
@@ -103,7 +103,7 @@ Google Fonts fall back to system fonts when unavailable.
 
 ## CSV files
 
-Administrator imports accept UTF-8 CSV files with 1â€“500 data rows, up to 200 KB.
+Administrator imports accept UTF-8 CSV files with 1-500 data rows, up to 200 KB.
 Use these exact headers:
 
 ```csv
@@ -114,7 +114,7 @@ name,category,quantity,threshold,unit
 id,name,department,email
 ```
 
-[Supply example](docs/examples/supplies.csv) Â· [Teacher example](docs/examples/teachers.csv)
+[Supply example](docs/examples/supplies.csv) | [Teacher example](docs/examples/teachers.csv)
 
 Imports create records; they do not silently overwrite existing IDs or names.
 Stock quantities are whole numbers from 0 to 1,000,000. Requests must be positive
@@ -145,7 +145,7 @@ On Windows replace the classpath separator `:` with `;`. CI runs all three check
 ## Publish the live demo
 
 1. Push to `devbyabir/officeflow` on `main`.
-2. In **Settings â†’ Pages**, choose **GitHub Actions** as the source.
+2. In **Settings > Pages**, choose **GitHub Actions** as the source.
 3. Run **Publish live demo**. It tests the browser model and Java API, then
    publishes only `docs/site`.
 4. Open https://devbyabir.github.io/officeflow/.
@@ -158,10 +158,10 @@ transactional persistence and tested stock rules. These features are not claimed
 to have existed in the original submission. The report describes MySQL; this
 version supports H2 through JDBC for a reproducible local setup.
 
-[Implementation plan](docs/PLAN.md) Â· [Architecture](docs/ARCHITECTURE.md)
+[Implementation plan](docs/PLAN.md) | [Architecture](docs/ARCHITECTURE.md)
 
 ## Ownership
 
-Â© 2026 **devbyabir**. All rights reserved. See [LICENSE](LICENSE).
+Copyright 2026 **devbyabir**. All rights reserved. See [LICENSE](LICENSE).
 Third-party libraries and fonts retain their own licences; see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
