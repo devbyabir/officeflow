@@ -1,3 +1,4 @@
+import { paginate, statusCounts, stockParts } from "./view-utils.js";
 import {
   seed,
   command,
@@ -60,6 +61,12 @@ let query = "",
   requestFilter = "",
   page = "overview";
 let loadWarning = "";
+let tablePage = 1,
+  pageSize = 5,
+  stockFilter = "";
+let lastRenderedPage = "";
+const animatedWorkspaces = new Set();
+let closingAnimation;
 try {
   const saved = JSON.parse(localStorage.getItem(STORE_KEY));
   state = saved || seed();
@@ -76,20 +83,25 @@ try {
 }
 
 async function apiCall(path, body) {
-  const response = await fetch(`./api/${path}`, {
-    method: body ? "POST" : "GET",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const result = await response.json();
-  if (!response.ok)
-    throw new Error(
-      result.error || "The server could not complete this request.",
-    );
-  return result;
+  const finish = networkLoading(path);
+  try {
+    const response = await fetch(`./api/${path}`, {
+      method: body ? "POST" : "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const result = await response.json();
+    if (!response.ok)
+      throw new Error(
+        result.error || "The server could not complete this request.",
+      );
+    return result;
+  } finally {
+    finish();
+  }
 }
 async function save(action, data) {
   let updated;
@@ -203,8 +215,8 @@ function metrics() {
     ],
   ]
     .map(
-      ([name, value, glyph, foot, cls]) =>
-        `<article class="metric ${cls}"><div class="metric-head">${name}<span class="metric-icon">${icon(glyph)}</span></div><div class="metric-value">${value.toString().padStart(2, "0")}</div><div class="metric-foot">${foot}</div></article>`,
+      ([name, value, glyph, foot, cls], index) =>
+        `<a class="metric ${cls}" href="${["#inventory", "#requests?status=Pending", "#inventory?stock=low", actor.role === "admin" ? "#teachers" : "#history?status=Issued"][index]}" title="Open ${escape(name.toLowerCase())}"><div class="metric-head">${name}<span class="metric-icon">${icon(glyph)}</span></div><div class="metric-value" data-count="${value}">${value.toString().padStart(2, "0")}</div><div class="metric-foot">${foot}</div><span class="metric-link" aria-hidden="true">↗</span></a>`,
     )
     .join("")}</section>`;
 }
@@ -216,6 +228,7 @@ function filteredSupplies() {
     .filter(
       (s) =>
         (!category || s.category === category) &&
+        (!stockFilter || stockStatus(state, s) !== "In stock") &&
         `${s.name} ${s.id}`.toLowerCase().includes(query.toLowerCase()),
     )
     .sort(
@@ -228,15 +241,26 @@ function filteredSupplies() {
     );
 }
 function inventoryTable(compact = false) {
-  const list = filteredSupplies(),
-    visible = compact ? list.slice(0, 5) : list;
-  return `<div class="table-wrap"><table><caption class="screen-reader">Supply inventory with available quantities</caption><thead><tr><th>SUPPLY ITEM</th><th>CATEGORY</th><th>AVAILABLE</th><th>STATUS</th><th><span class="screen-reader">Actions</span></th></tr></thead><tbody>${visible.map((item) => `<tr><td><div class="item-cell">${itemIcon(item)}<div><div class="item-name">${escape(item.name)}</div><div class="item-id">${escape(item.id.startsWith("SUP-") && item.id.length > 15 ? "SUP-" + item.id.slice(-6).toUpperCase() : item.id)}</div></div></div></td><td class="category-text">${escape(item.category)}</td><td><span class="qty">${available(state, item)}<small>${escape(item.unit)}</small></span>${item.quantity !== available(state, item) ? `<div class="item-id">${item.quantity - available(state, item)} reserved · ${item.quantity} on hand</div>` : ""}</td><td>${badge(stockStatus(state, item))}</td><td><button class="row-action" data-action="${actor.role === "admin" ? "edit-supply" : "request-item"}" data-id="${escape(item.id)}" aria-label="${actor.role === "admin" ? "Edit" : "Request"} ${escape(item.name)}">${actor.role === "admin" ? "↗" : "＋"}</button></td></tr>`).join("")}</tbody></table>${!visible.length ? empty("No supplies found", "Try another search, or add your first supply item.") : ""}</div><div class="table-bottom"><span>Showing ${visible.length} of ${list.length} items</span><span>Stock stays in sync <span style="color:#80a887">●</span></span></div>`;
+  const list = filteredSupplies();
+  const result = paginate(list, tablePage, pageSize);
+  tablePage = result.page;
+  const visible = compact ? list.slice(0, 5) : result.items;
+  return `<div class="filter-summary" role="status">${list.length} matching item${list.length === 1 ? "" : "s"}${stockFilter ? " · Low or out of stock" : ""}<button class="text-button" data-action="clear-filters">Clear filters</button></div>
+  <div class="table-wrap"><table><caption class="screen-reader">Supply inventory with available quantities</caption><thead><tr><th>SUPPLY ITEM</th><th>CATEGORY</th><th>AVAILABLE / ON HAND</th><th>STATUS</th><th><span class="screen-reader">Actions</span></th></tr></thead><tbody>${visible
+    .map((item) => {
+      const parts = stockParts(item.quantity, available(state, item));
+      return `<tr><td><div class="item-cell">${itemIcon(item)}<div><button class="item-detail-link" data-action="supply-details" data-id="${escape(item.id)}">${escape(item.name)}</button><div class="item-id">${escape(item.id.length > 15 ? "SUP-" + item.id.slice(-6).toUpperCase() : item.id)}</div></div></div></td><td class="category-text">${escape(item.category)}</td><td><span class="qty">${parts.available}<small>/ ${parts.onHand} ${escape(item.unit)}</small></span><div class="stock-track" role="img" aria-label="${parts.available} available, ${parts.reserved} reserved, ${parts.onHand} on hand"><span style="width:${parts.percent}%"></span></div><div class="item-id">${parts.reserved} reserved</div></td><td>${badge(stockStatus(state, item))}</td><td><button class="row-action" data-action="${actor.role === "admin" ? "edit-supply" : "request-item"}" data-id="${escape(item.id)}" title="${actor.role === "admin" ? "Edit inventory" : "Request supplies"}" aria-label="${actor.role === "admin" ? "Edit" : "Request"} ${escape(item.name)}">${actor.role === "admin" ? "↗" : "＋"}</button></td></tr>`;
+    })
+    .join(
+      "",
+    )}</tbody></table>${!visible.length ? empty("No supplies found", "Try another search or clear your filters.") : ""}</div>
+  <div class="table-bottom"><span>${compact ? `Showing ${visible.length} of ${list.length}` : `${result.start}–${result.end} of ${result.total}`} items</span>${compact ? '<a class="text-button" href="#inventory">Open inventory ↗</a>' : `<div class="pagination"><label>Rows <select id="page-size" aria-label="Rows per page">${[5, 10, 25].map((size) => `<option ${size === pageSize ? "selected" : ""}>${size}</option>`).join("")}</select></label><button class="button" data-action="page-prev" aria-label="Previous inventory page" ${result.page <= 1 ? "disabled" : ""}>←</button><span>Page ${result.page} / ${result.pages}</span><button class="button" data-action="page-next" aria-label="Next inventory page" ${result.page >= result.pages ? "disabled" : ""}>→</button></div>`}</div>`;
 }
 function empty(title, copy) {
   return `<div class="empty">${icon("inventory")}<strong>${title}</strong><p>${copy}</p></div>`;
 }
 function requestRow(r, short = false) {
-  return `<article class="request-card"><span class="activity-avatar">${initials(r.teacherName)}</span><div class="request-details"><strong>${escape(r.supplyName)} <span style="color:#94a18e;font-weight:400">× ${r.quantity}</span></strong><small>${escape(r.teacherName)} <span style="margin:0 5px">·</span> ${date(r.createdAt)}</small>${!short && r.note ? `<div class="request-note">${escape(r.note)}</div>` : ""}</div>${badge(r.status)}<div class="request-actions">${r.status === "Pending" ? (actor.role === "admin" ? `<button class="button" data-action="reject" data-id="${r.id}">Reject</button><button class="button primary" data-action="issue" data-id="${r.id}">Issue ${icon("arrow")}</button>` : `<button class="button" data-action="cancel" data-id="${r.id}">Cancel request</button>`) : ""}</div></article>`;
+  return `<article class="request-card"><span class="activity-avatar">${initials(r.teacherName)}</span><div class="request-details"><strong>${escape(r.supplyName)} <span style="color:#94a18e;font-weight:400">× ${r.quantity}</span></strong><small>${escape(r.teacherName)} <span style="margin:0 5px">·</span> ${date(r.createdAt)}</small>${!short && r.note ? `<div class="request-note">${escape(r.note)}</div>` : ""}</div>${badge(r.status)}<div class="request-actions">${r.status === "Pending" ? (actor.role === "admin" ? `<button class="button" data-action="reject" data-id="${r.id}">Reject</button><button class="button primary" data-action="issue" data-id="${r.id}">Issue ${icon("arrow")}</button>` : `<button class="button" data-action="cancel" data-id="${r.id}">Cancel request</button>`) : ""}</div></article>${short ? "" : timeline(r)}`;
 }
 function overview() {
   const low = state.supplies
@@ -270,7 +294,7 @@ function overview() {
         .map((r) => requestRow(r, true))
         .join("") ||
       empty("All caught up", "There are no pending requests right now.")
-    }</section></div><aside class="right-column"><section class="panel restock"><div class="panel-heading"><div class="restock-title">${icon("alert")}<h2>Time to restock</h2></div><span class="stock-mini">${low.length}</span></div><div class="restock-body">${
+    }</section></div><aside class="right-column">${statusChart()}<section class="panel restock"><div class="panel-heading"><div class="restock-title">${icon("alert")}<h2>Time to restock</h2></div><span class="stock-mini">${low.length}</span></div><div class="restock-body">${
       low
         .slice(0, 3)
         .map(
@@ -338,7 +362,7 @@ function teachers() {
   );
 }
 function render() {
-  page = location.hash.slice(1) || "overview";
+  page = location.hash.slice(1).split("?")[0] || "overview";
   if (
     !["overview", "inventory", "requests", "teachers", "history"].includes(
       page,
@@ -361,12 +385,18 @@ function render() {
     teachers,
     history: () => requests(true),
   }[page]();
-  $("#main").classList.remove("fade-in");
-  void $("#main").offsetWidth;
-  $("#main").classList.add("fade-in");
+  if (lastRenderedPage !== page) {
+    $("#main").classList.remove("fade-in");
+    void $("#main").offsetWidth;
+    $("#main").classList.add("fade-in");
+  } else $("#main").classList.remove("fade-in");
+  lastRenderedPage = page;
+  animateDashboard();
   $("#sidebar").classList.remove("open");
 }
 function modal(title, subtitle, body) {
+  closingAnimation?.cancel();
+  closingAnimation = null;
   $("#dialog-content").innerHTML =
     `<div class="dialog-heading"><div><h2 id="dialog-title">${title}</h2><p>${subtitle}</p></div><button class="icon-button" data-action="close" aria-label="Close dialog">×</button></div><div class="dialog-body">${body}</div>`;
   if (!$("#dialog").open) $("#dialog").showModal();
@@ -397,6 +427,12 @@ function teacherDialog(id) {
 }
 function requestDialog(id) {
   const list = state.supplies.filter((s) => available(state, s) > 0);
+  if (id && !list.some((item) => item.id === id)) {
+    toast(
+      "This item has no available stock. Choose another item or ask your administrator to restock.",
+    );
+    return;
+  }
   if (!list.length) {
     toast("There are no available supplies to request.");
     return;
@@ -495,7 +531,28 @@ document.addEventListener("click", async (event) => {
   if (!button) return;
   const { action, id } = button.dataset;
   try {
-    if (action === "close") $("#dialog").close();
+    if (action === "supply-details") {
+      supplyDetails(id);
+      return;
+    }
+    if (action === "clear-filters") {
+      query = "";
+      category = "";
+      stockFilter = "";
+      sort = "name";
+      tablePage = 1;
+      if (location.hash.includes("?stock=")) location.hash = "inventory";
+      else render();
+      return;
+    }
+    if (action === "page-prev" || action === "page-next") {
+      tablePage += action === "page-next" ? 1 : -1;
+      $("#inventory-results").innerHTML = inventoryTable();
+      $(".pagination").setAttribute("tabindex", "-1");
+      $(".pagination").focus();
+      return;
+    }
+    if (action === "close") closeModal();
     else if (action === "new-supply" || action === "edit-supply")
       supplyDialog(id);
     else if (action === "new-teacher" || action === "edit-teacher")
@@ -507,7 +564,7 @@ document.addEventListener("click", async (event) => {
     else if (action.startsWith("import-")) importDialog(action.split("-")[1]);
     else if (action === "identity") {
       actor = { role: id === "admin" ? "admin" : "teacher", id };
-      $("#dialog").close();
+      closeModal();
       query = "";
       location.hash = "overview";
       render();
@@ -545,6 +602,9 @@ document.addEventListener("submit", async (event) => {
   errorBox.textContent = "";
   const submit = form.querySelector("[type=submit]");
   submit.disabled = true;
+  const submitLabel = submit.innerHTML;
+  submit.innerHTML = '<span class="spinner" aria-hidden="true"></span> Saving…';
+  form.setAttribute("aria-busy", "true");
   try {
     const data = Object.fromEntries(new FormData(form));
     if (form.dataset.form === "login") {
@@ -573,18 +633,21 @@ document.addEventListener("submit", async (event) => {
       if ("edit" in data) data.edit = data.edit === "true";
       await save(form.dataset.form, data);
     }
-    $("#dialog").close();
+    closeModal();
     render();
     toast("All set. Your workspace is up to date.");
   } catch (error) {
     errorBox.textContent = error.message;
   } finally {
     submit.disabled = false;
+    submit.innerHTML = submitLabel;
+    form.removeAttribute("aria-busy");
   }
 });
 document.addEventListener("input", (event) => {
   if (event.target.id === "search") {
     query = event.target.value;
+    tablePage = 1;
     if (page === "inventory" || page === "overview")
       $("#inventory-results").innerHTML = inventoryTable(page === "overview");
     else {
@@ -596,12 +659,19 @@ document.addEventListener("input", (event) => {
   }
 });
 document.addEventListener("change", (event) => {
+  if (event.target.id === "page-size") {
+    pageSize = Number(event.target.value);
+    tablePage = 1;
+    $("#inventory-results").innerHTML = inventoryTable();
+  }
   if (event.target.id === "category") {
     category = event.target.value;
+    tablePage = 1;
     $("#inventory-results").innerHTML = inventoryTable(page === "overview");
   }
   if (event.target.id === "sort") {
     sort = event.target.value;
+    tablePage = 1;
     $("#inventory-results").innerHTML = inventoryTable(page === "overview");
   }
   if (event.target.id === "request-filter") {
@@ -609,13 +679,25 @@ document.addEventListener("change", (event) => {
     render();
   }
 });
+function readRoute() {
+  const route = location.hash.slice(1).split("?");
+  const filters = new URLSearchParams(route[1] || "");
+  stockFilter = filters.get("stock") === "low" ? "low" : "";
+  requestFilter = ["Pending", "Issued", "Rejected", "Cancelled"].includes(
+    filters.get("status"),
+  )
+    ? filters.get("status")
+    : "";
+}
 window.addEventListener("hashchange", () => {
   query = "";
   category = "";
-  requestFilter = "";
+  tablePage = 1;
+  readRoute();
   render();
   window.scrollTo(0, 0);
 });
+readRoute();
 $("#identity").onclick = identities;
 $("#switch-role").onclick = identities;
 $("#help").onclick = help;
@@ -629,7 +711,7 @@ $("#dialog").addEventListener("click", (e) => {
       e.clientY < r.top ||
       e.clientY > r.bottom
     )
-      $("#dialog").close();
+      closeModal();
   }
 });
 $("#reset-demo").onclick = () =>
@@ -645,7 +727,7 @@ document.addEventListener("click", (event) => {
       localStorage.setItem(STORE_KEY, JSON.stringify(fresh));
       state = fresh;
       actor = { role: "admin", id: "admin" };
-      $("#dialog").close();
+      closeModal();
       render();
       toast("A fresh workspace is ready.");
     } catch {
@@ -689,3 +771,133 @@ try {
 } catch {
   /* Offline browser demo remains available. */
 }
+
+function timeline(request) {
+  const timestamp = (value) =>
+    new Date(value).toLocaleString("en-GB", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  return `<details class="request-timeline"><summary>Request timeline</summary><ol><li><strong>Requested by ${escape(request.teacherName)}</strong><time>${timestamp(request.createdAt)}</time></li>${request.status === "Pending" ? '<li class="timeline-pending"><strong>Awaiting administrator review</strong><span>Stock is reserved.</span></li>' : `<li><strong>${escape(request.status)}</strong><time>${request.updatedAt ? timestamp(request.updatedAt) : "Completion time not recorded"}</time></li>`}</ol></details>`;
+}
+function statusChart() {
+  const counts = statusCounts(mine()),
+    total = mine().length;
+  let offset = 0;
+  const colors = [
+    "var(--chart-pending)",
+    "var(--chart-issued)",
+    "var(--chart-rejected)",
+    "var(--chart-cancelled)",
+  ];
+  const segments = counts.map((entry, index) => {
+    const start = offset;
+    offset += total ? (entry.count / total) * 100 : 0;
+    return `${colors[index]} ${start}% ${offset}%`;
+  });
+  return `<section class="panel status-panel"><div class="panel-heading"><div><h2>Request snapshot</h2><p>Current status · ${actor.role === "admin" ? "all teachers" : "your requests"}</p></div></div><div class="status-content"><div class="status-donut" role="img" aria-label="${counts.map((x) => x.count + " " + x.status).join(", ")}" style="background:${total ? "conic-gradient(" + segments.join(",") + ")" : "var(--line)"}"><div><strong>${total}</strong><span>requests</span></div></div><div class="chart-legend">${counts.map((entry, i) => `<a href="#requests?status=${entry.status}"><i style="background:${colors[i]}"></i>${entry.status}<strong>${entry.count}</strong></a>`).join("")}</div></div>${total ? "" : '<p class="chart-empty">Your first request starts the picture.</p>'}</section>`;
+}
+function supplyDetails(id) {
+  const item = state.supplies.find((item) => item.id === id);
+  if (!item) {
+    toast("This supply is no longer available.");
+    return;
+  }
+  const parts = stockParts(item.quantity, available(state, item));
+  const related = mine()
+    .filter((request) => request.supplyId === id)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  modal(
+    escape(item.name),
+    escape(item.category) + " · " + escape(item.unit),
+    `<section class="supply-detail"><div class="detail-stock"><div><strong>${parts.available}</strong><span>Available</span></div><div><strong>${parts.reserved}</strong><span>Reserved</span></div><div><strong>${parts.onHand}</strong><span>On hand</span></div></div><div class="stock-track detail-track"><span style="width:${parts.percent}%"></span></div><p class="detail-description">${badge(stockStatus(state, item))} Low-stock threshold: ${item.threshold}</p><h3>${actor.role === "admin" ? "Requisition history" : "Your requisition history"}</h3>${
+      related
+        .slice(0, 6)
+        .map(
+          (request) =>
+            `<div class="detail-request"><div><strong>${escape(request.teacherName)} · ${request.quantity} ${escape(item.unit)}</strong><small>${date(request.createdAt)}</small></div>${badge(request.status)}</div>`,
+        )
+        .join("") ||
+      '<p class="detail-description">No requests for this item yet.</p>'
+    }<div class="dialog-actions"><button class="button" data-action="close">Close</button><button class="button primary" data-action="${actor.role === "admin" ? "edit-supply" : "request-item"}" data-id="${escape(item.id)}">${actor.role === "admin" ? "Edit supply" : "Request supply"}</button></div></section>`,
+  );
+}
+function animateDashboard() {
+  const key = actor.role + actor.id;
+  if (page !== "overview" || animatedWorkspaces.has(key)) return;
+  animatedWorkspaces.add(key);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  $(".metrics")?.classList.add("metrics-enter");
+  document.querySelectorAll("[data-count]").forEach((element) => {
+    const target = Number(element.dataset.count),
+      start = performance.now();
+    const tick = (time) => {
+      if (
+        !element.isConnected ||
+        matchMedia("(prefers-reduced-motion: reduce)").matches
+      ) {
+        element.textContent = String(target).padStart(2, "0");
+        return;
+      }
+      const fraction = Math.min(1, (time - start) / 550);
+      element.textContent = String(
+        Math.round(target * (1 - Math.pow(1 - fraction, 3))),
+      ).padStart(2, "0");
+      if (fraction < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+function networkLoading(path) {
+  const main = $("#main");
+  let skeleton;
+  if (path === "state") {
+    skeleton = document.createElement("div");
+    skeleton.className = "loading-overlay";
+    skeleton.setAttribute("role", "status");
+    skeleton.innerHTML =
+      '<span class="screen-reader">Loading workspace</span><div class="skeleton-line"></div><div class="skeleton-cards"><i></i><i></i><i></i><i></i></div><div class="skeleton-table"></div>';
+    main.append(skeleton);
+    main.setAttribute("aria-busy", "true");
+  }
+  const progress = document.createElement("div");
+  progress.className = "network-progress";
+  progress.setAttribute("aria-label", "Working");
+  document.body.append(progress);
+  return () => {
+    progress.remove();
+    skeleton?.remove();
+    if (skeleton) main.removeAttribute("aria-busy");
+  };
+}
+
+async function closeModal() {
+  const dialog = $("#dialog");
+  if (!dialog.open) return;
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    dialog.close();
+    return;
+  }
+  closingAnimation?.cancel();
+  const animation = dialog.animate(
+    [
+      { opacity: 1, transform: "translateY(0)" },
+      { opacity: 0, transform: "translateY(5px)" },
+    ],
+    { duration: 130, easing: "ease-in" },
+  );
+  closingAnimation = animation;
+  try {
+    await animation.finished;
+  } catch {
+    return;
+  }
+  if (closingAnimation === animation) {
+    dialog.close();
+    closingAnimation = null;
+  }
+}
+$("#dialog").addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeModal();
+});

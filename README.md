@@ -31,6 +31,9 @@ Java 17+ Â· JDBC Â· H2 Â· JavaScript Â· GitHub Pages
 - Administrator issue/reject actions and historical name snapshots.
 - CSV batch imports with rollback when any row is invalid.
 - CSV reports with spreadsheet-formula protection.
+- Actionable dashboard cards, real status breakdown and one-time count-up animation.
+- Inventory pagination, clear filters, sticky table headers and stock reservation bars.
+- Supply details, personal request timelines and Java loading/saving feedback.
 - Readable typography, soft pastel light/dark themes, keyboard-accessible dialogs and reduced-motion support.
 
 Pending requests reserve stock. Issuing deducts it once; cancelling or rejecting
@@ -123,7 +126,7 @@ mvn -f server/pom.xml package dependency:copy-dependencies
 python tests/test_server.py
 ```
 
-The browser suite checks reservations, owner restrictions, terminal transitions,
+The browser suite checks pagination, status counts, stock display bounds, reservations, owner restrictions, terminal transitions,
 CSV quoting/rollback and export safety. HTTP tests start a real Java/JDBC server.
 The additional Java integration test checks restart persistence:
 
