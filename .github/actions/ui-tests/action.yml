@@ -3,7 +3,7 @@ description: Exercise theme, navigation, mobile layout and dialogs in Chromium
 runs:
   using: composite
   steps:
-    - uses: actions/setup-python@v5
+    - uses: actions/setup-python@v7
       with:
         python-version: "3.12"
     - shell: bash
