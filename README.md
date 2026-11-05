@@ -34,7 +34,7 @@ Java 17+ Â· JDBC Â· H2 Â· JavaScript Â· GitHub Pages
 - Actionable dashboard cards, real status breakdown and one-time count-up animation.
 - Inventory pagination, clear filters, sticky table headers and stock reservation bars.
 - Supply details, personal request timelines and Java loading/saving feedback.
-- Readable typography, soft pastel light/dark themes, keyboard-accessible dialogs and reduced-motion support.
+- Readable typography, Slate & Indigo light/dark themes, keyboard-accessible dialogs and reduced-motion support.
 
 Pending requests reserve stock. Issuing deducts it once; cancelling or rejecting
 releases the reservation. Available quantities always exclude pending requests.

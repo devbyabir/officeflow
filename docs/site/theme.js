@@ -18,7 +18,9 @@
       );
     }
     document.querySelector('meta[name="theme-color"]').content =
-      theme === "dark" ? "#22232d" : "#fcf9f3";
+      getComputedStyle(document.documentElement)
+        .getPropertyValue("--bg")
+        .trim();
   }
   apply(
     ["light", "dark"].includes(saved)
