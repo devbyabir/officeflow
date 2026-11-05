@@ -114,6 +114,7 @@ class BrowserTests(unittest.TestCase):
         dialog.get_by_role("button", name="Add supply", exact=True).click()
         expect(dialog).not_to_be_visible()
         self.page.locator("#navigation").get_by_role("link", name="Supply inventory").click()
+        expect(self.page.locator("#breadcrumb")).to_have_text("Supply inventory")
         self.page.locator("#search").fill("QA browser markers")
         expect(self.page.locator("#inventory-results")).to_contain_text("QA browser markers")
         self.page.reload()
@@ -226,6 +227,34 @@ class JavaAccountBrowserTests(unittest.TestCase):
         page.get_by_role("button", name="Sign out", exact=True).click()
         page.reload()
         expect(page.get_by_role("dialog").get_by_role("heading", name="Welcome to OfficeFlow")).to_be_visible()
+        self.assertEqual(errors, [])
+
+    def test_revoked_session_clears_cached_view_on_next_request(self):
+        context = self.browser.new_context(reduced_motion="reduce")
+        self.addCleanup(context.close)
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(self.base)
+        dialog = page.get_by_role("dialog")
+        dialog.get_by_label("Account ID", exact=True).fill("T002")
+        dialog.get_by_label("Password", exact=True).fill("T002")
+        dialog.get_by_role("button", name="Sign in", exact=True).click()
+        expect(dialog).not_to_be_visible()
+        # Reset from a separate administrator session while this tab stays open.
+        response = context.request.post(self.base + "/api/login",
+            data={"id": "001", "password": "test-admin-password"})
+        self.assertTrue(response.ok)
+        token = response.json()["token"]
+        response = context.request.post(self.base + "/api/password/reset",
+            headers={"Authorization": "Bearer " + token},
+            data={"id": "T002", "newPassword": "revoked-teacher-password"})
+        self.assertTrue(response.ok)
+        page.locator("#switch-role").click()
+        page.get_by_role("button", name="Sign out", exact=True).click()
+        expect(dialog.get_by_role("heading", name="Welcome to OfficeFlow")).to_be_visible()
+        expect(page.locator("#main")).not_to_contain_text("Sam Chen")
+        self.assertIsNone(page.evaluate("sessionStorage.getItem('officeflow-token')"))
         self.assertEqual(errors, [])
 
 

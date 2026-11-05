@@ -169,7 +169,10 @@ public final class App {
         json(exchange, 200, service.importRows(account, value(data, "type"), value(data, "csv")));
       } else json(exchange, 404, object("error", "Endpoint not found."));
     } catch (SecurityException exception) {
-      json(exchange, 403, object("error", exception.getMessage()));
+      JsonObject result = object("error", exception.getMessage());
+      if ("Your session has ended. Please sign in.".equals(exception.getMessage()))
+        result.addProperty("code", "SESSION_EXPIRED");
+      json(exchange, 403, result);
     } catch (IllegalArgumentException | JsonParseException | IllegalStateException exception) {
       json(
           exchange,

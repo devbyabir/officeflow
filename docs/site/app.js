@@ -94,6 +94,11 @@ async function apiCall(path, body) {
       body: body ? JSON.stringify(body) : undefined,
     });
     const result = await response.json();
+    if (!response.ok && result.code === "SESSION_EXPIRED") {
+      clearSession();
+      loginDialog();
+      toast("Your session has ended. Please sign in again.");
+    }
     if (!response.ok)
       throw new Error(
         result.error || "The server could not complete this request.",

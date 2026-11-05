@@ -85,7 +85,7 @@ def main():
                 call("/api/password/reset", {"id":"T100", "newPassword":"teacher-reset-password"}, teacher, 403)
                 call("/api/password/change", {"currentPassword":"T100", "newPassword":"teacher-new-password"}, teacher)
                 call("/api/state", token=teacher, expected=403)
-                call("/api/state", token=second, expected=403)
+                assert call("/api/state", token=second, expected=403)["code"] == "SESSION_EXPIRED"
                 call("/api/login", {"id":"T100", "password":"T100"}, expected=403)
                 teacher = call("/api/login", {"id":"T100", "password":"teacher-new-password"})["token"]
                 # An ordinary inventory write must preserve the changed credential.
