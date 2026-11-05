@@ -1,0 +1,11 @@
+data/
+build/
+server/target/
+node_modules/
+*.class
+*.log
+.env
+.idea/
+.vscode/
+*.iml
+__pycache__/

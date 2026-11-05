@@ -1,0 +1,124 @@
+{
+  "teachers": [
+    {
+      "id": "T001",
+      "name": "Alex Morgan",
+      "department": "Computer Science",
+      "email": "alex@example.com"
+    },
+    {
+      "id": "T002",
+      "name": "Sam Chen",
+      "department": "Design & Media",
+      "email": "sam@example.com"
+    },
+    {
+      "id": "T003",
+      "name": "Jordan Lee",
+      "department": "Administration",
+      "email": "jordan@example.com"
+    }
+  ],
+  "supplies": [
+    {
+      "id": "SUP-001",
+      "name": "A4 copy paper",
+      "category": "Paper & print",
+      "quantity": 84,
+      "threshold": 20,
+      "unit": "reams"
+    },
+    {
+      "id": "SUP-002",
+      "name": "Gel pens · black",
+      "category": "Stationery",
+      "quantity": 128,
+      "threshold": 30,
+      "unit": "pieces"
+    },
+    {
+      "id": "SUP-003",
+      "name": "Wireless mouse",
+      "category": "Technology",
+      "quantity": 9,
+      "threshold": 10,
+      "unit": "pieces"
+    },
+    {
+      "id": "SUP-004",
+      "name": "Hardcover notebook",
+      "category": "Stationery",
+      "quantity": 46,
+      "threshold": 15,
+      "unit": "pieces"
+    },
+    {
+      "id": "SUP-005",
+      "name": "USB-C adapter",
+      "category": "Technology",
+      "quantity": 6,
+      "threshold": 8,
+      "unit": "pieces"
+    },
+    {
+      "id": "SUP-006",
+      "name": "Desk organizer",
+      "category": "Desk essentials",
+      "quantity": 24,
+      "threshold": 5,
+      "unit": "pieces"
+    },
+    {
+      "id": "SUP-007",
+      "name": "Sticky notes · pastel",
+      "category": "Stationery",
+      "quantity": 62,
+      "threshold": 10,
+      "unit": "packs"
+    },
+    {
+      "id": "SUP-008",
+      "name": "Printer toner",
+      "category": "Paper & print",
+      "quantity": 0,
+      "threshold": 4,
+      "unit": "cartridges"
+    }
+  ],
+  "requests": [
+    {
+      "id": "REQ-1003",
+      "teacherId": "T001",
+      "teacherName": "Alex Morgan",
+      "supplyId": "SUP-001",
+      "supplyName": "A4 copy paper",
+      "quantity": 5,
+      "status": "Pending",
+      "note": "Handouts for next week’s lab.",
+      "createdAt": "2026-11-05T10:04:42.573Z"
+    },
+    {
+      "id": "REQ-1002",
+      "teacherId": "T002",
+      "teacherName": "Sam Chen",
+      "supplyId": "SUP-003",
+      "supplyName": "Wireless mouse",
+      "quantity": 2,
+      "status": "Pending",
+      "note": "Media studio workstations.",
+      "createdAt": "2026-11-04T10:04:42.573Z"
+    },
+    {
+      "id": "REQ-1001",
+      "teacherId": "T003",
+      "teacherName": "Jordan Lee",
+      "supplyId": "SUP-004",
+      "supplyName": "Hardcover notebook",
+      "quantity": 3,
+      "status": "Issued",
+      "note": "Department meeting.",
+      "createdAt": "2026-11-02T10:04:42.573Z",
+      "updatedAt": "2026-11-03T10:04:42.573Z"
+    }
+  ]
+}
