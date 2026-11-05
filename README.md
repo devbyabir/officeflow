@@ -7,7 +7,7 @@
 A responsive inventory and requisition workspace, rebuilt from my third-semester
 Java final project at Zhengzhou University.
 
-[![Open Live Demo](https://img.shields.io/badge/OPEN_LIVE_DEMO-OfficeFlow-147d70?style=for-the-badge&logo=githubpages&logoColor=white)](https://devbyabir.github.io/officeflow/)
+[![Open Live Demo](https://img.shields.io/badge/OPEN_LIVE_DEMO-OfficeFlow-3B5BDB?style=for-the-badge&logo=githubpages&logoColor=white)](https://devbyabir.github.io/officeflow/)
 [![Application checks](https://github.com/devbyabir/officeflow/actions/workflows/checks.yml/badge.svg)](https://github.com/devbyabir/officeflow/actions/workflows/checks.yml)
 
 Java 17+ Â· JDBC Â· H2 Â· JavaScript Â· GitHub Pages
@@ -22,6 +22,11 @@ Java 17+ Â· JDBC Â· H2 Â· JavaScript Â· GitHub Pages
 ![OfficeFlow dark mode](docs/images/dark-mode.png)
 
 </details>
+
+| View | Light | Dark |
+| --- | --- | --- |
+| Inventory | [Preview](docs/images/inventory-light.png) | [Preview](docs/images/inventory-dark.png) |
+| Requisitions | [Preview](docs/images/requests-light.png) | [Preview](docs/images/requests-dark.png) |
 
 ## A smoother day for your team
 
