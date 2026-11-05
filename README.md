@@ -76,8 +76,16 @@ teachers also start with their ID as password. These are public sample credentia
 Set `OFFICEFLOW_ADMIN_PASSWORD` before the first launch to choose the initial
 admin password. This does not reset credentials in an existing database.
 
+In Java mode, open **Account** (or the sidebar profile) to change your password
+or sign out. Password changes require your current password and a new password
+of 12-120 characters; all sessions for that account are invalidated. Administrators
+can reset an active teacher's password from the same menu, which also ends that
+teacher's existing sessions. Share reset passwords privately. Signing out revokes
+the current session on the server and clears the browser's authenticated view.
+These account controls are available in Java mode; the Pages demo uses role switching.
+
 The server binds to loopback for local use. Real internet hosting would require
-HTTPS, operational controls and a first-login password-change flow. Passwords
+HTTPS, operational controls and an enforced first-login password-change policy. Passwords
 are salted PBKDF2-HMAC-SHA256 hashes (210,000 iterations). Sessions expire after
 eight hours or a server restart. Database files under `data/` are excluded from Git.
 
@@ -131,7 +139,23 @@ mvn -f server/pom.xml package dependency:copy-dependencies
 python tests/test_server.py
 ```
 
-The browser suite checks pagination, status counts, stock display bounds, reservations, owner restrictions, terminal transitions,
+Real Chromium UI regression tests use test-only Python tooling:
+
+```sh
+python -m pip install -r tests/requirements-ui.txt
+python -m playwright install chromium
+python tests/test_ui.py
+```
+
+The suite starts its own static server and isolated browser contexts. It covers
+theme persistence, system/reduced-motion preferences, route navigation, mobile
+layout, dialog validation, saving, Escape and focus restoration. To include the
+real Java account UI test after the Maven build, set `OFFICEFLOW_UI_JAVA=1`
+(PowerShell: `$env:OFFICEFLOW_UI_JAVA="1"`) before running the suite. CI enables
+this check and runs browser regressions before Pages deployment. No npm
+packages or frontend build step are introduced.
+
+The domain suite checks pagination, status counts, stock display bounds, reservations, owner restrictions, terminal transitions,
 CSV quoting/rollback and export safety. HTTP tests start a real Java/JDBC server.
 The additional Java integration test checks restart persistence:
 
@@ -140,7 +164,7 @@ javac --release 17 -encoding UTF-8 -cp "server/target/classes:server/target/depe
 java -cp "server/target/classes:server/target/test-classes:server/target/dependency/*" com.officeflow.ServiceTest
 ```
 
-On Windows replace the classpath separator `:` with `;`. CI runs all three checks.
+On Windows replace the classpath separator `:` with `;`. CI runs the domain, Java service, HTTP and Chromium UI checks.
 
 ## Publish the live demo
 

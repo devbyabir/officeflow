@@ -9,3 +9,8 @@ node_modules/
 .vscode/
 *.iml
 __pycache__/
+
+.venv/
+.pytest_cache/
+test-results/
+playwright-report/

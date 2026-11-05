@@ -8,7 +8,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.HashSet;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
 /** A single-workspace JDBC repository. Service serializes write transactions. */
@@ -116,44 +117,67 @@ public final class Store implements AutoCloseable {
     return rows;
   }
 
-  /** Replace a validated snapshot atomically; suited to a small course workspace. */
+  public void updatePassword(String id, String password) throws SQLException {
+    try (PreparedStatement statement =
+        connection.prepareStatement("UPDATE credentials SET password_hash = ? WHERE id = ?")) {
+      statement.setString(1, Accounts.hash(password.toCharArray()));
+      statement.setString(2, id);
+      if (statement.executeUpdate() != 1)
+        throw new IllegalArgumentException("Account no longer exists.");
+    }
+  }
+
+  /** Used for initial seeding; normal commands already have the original snapshot. */
   public void write(JsonObject state) throws SQLException {
+    write(read(), state);
+  }
+
+  /** Persist only changed rows, preserving atomic imports and existing password hashes. */
+  public void write(JsonObject before, JsonObject state) throws SQLException {
     connection.setAutoCommit(false);
     try {
-      Set<String> teacherIds = new HashSet<>();
-      for (var element : state.getAsJsonArray("teachers"))
-        teacherIds.add(element.getAsJsonObject().get("id").getAsString());
-      Set<String> existing = new HashSet<>();
-      try (Statement s = connection.createStatement();
-          ResultSet r = s.executeQuery("SELECT id FROM credentials WHERE role = 'teacher'")) {
-        while (r.next()) existing.add(r.getString(1));
-      }
-      for (String id : teacherIds) if (!existing.contains(id)) addCredential(id, "teacher", id);
-      for (String id : existing)
-        if (!teacherIds.contains(id)) {
-          try (PreparedStatement s =
-              connection.prepareStatement(
-                  "DELETE FROM credentials WHERE id = ? AND role = 'teacher'")) {
-            s.setString(1, id);
-            s.executeUpdate();
+      Map<String, JsonObject> oldTeachers = byId(before.getAsJsonArray("teachers"));
+      Map<String, JsonObject> newTeachers = byId(state.getAsJsonArray("teachers"));
+      for (String id : newTeachers.keySet())
+        if (!oldTeachers.containsKey(id)) addCredential(id, "teacher", id);
+      try (PreparedStatement statement =
+          connection.prepareStatement(
+              "DELETE FROM credentials WHERE id = ? AND role = 'teacher'")) {
+        for (String id : oldTeachers.keySet())
+          if (!newTeachers.containsKey(id)) {
+            statement.setString(1, id);
+            statement.addBatch();
           }
-        }
-      try (Statement s = connection.createStatement()) {
-        s.executeUpdate("DELETE FROM requisitions");
-        s.executeUpdate("DELETE FROM supplies");
-        s.executeUpdate("DELETE FROM teachers");
+        statement.executeBatch();
       }
-      insert(
+      sync(
+          before.getAsJsonArray("teachers"),
           state.getAsJsonArray("teachers"),
-          "INSERT INTO teachers VALUES (?, ?, ?, ?)",
+          "teachers",
+          new String[] {"id", "name", "department", "email"},
           new String[] {"id", "name", "department", "email"});
-      insert(
+      sync(
+          before.getAsJsonArray("supplies"),
           state.getAsJsonArray("supplies"),
-          "INSERT INTO supplies VALUES (?, ?, ?, ?, ?, ?)",
+          "supplies",
+          new String[] {"id", "name", "category", "quantity", "threshold", "unit"},
           new String[] {"id", "name", "category", "quantity", "threshold", "unit"});
-      insert(
+      sync(
+          before.getAsJsonArray("requests"),
           state.getAsJsonArray("requests"),
-          "INSERT INTO requisitions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "requisitions",
+          new String[] {
+            "id",
+            "teacher_id",
+            "teacher_name",
+            "supply_id",
+            "supply_name",
+            "quantity",
+            "status",
+            "note",
+            "created_at",
+            "updated_at"
+          },
           new String[] {
             "id",
             "teacherId",
@@ -175,12 +199,47 @@ public final class Store implements AutoCloseable {
     }
   }
 
-  private void insert(JsonArray rows, String sql, String[] fields) throws SQLException {
-    try (PreparedStatement statement = connection.prepareStatement(sql)) {
-      for (var element : rows) {
-        JsonObject row = element.getAsJsonObject();
+  private static Map<String, JsonObject> byId(JsonArray rows) {
+    Map<String, JsonObject> result = new HashMap<>();
+    for (var element : rows) {
+      JsonObject row = element.getAsJsonObject();
+      result.put(row.get("id").getAsString(), row);
+    }
+    return result;
+  }
+
+  private void sync(
+      JsonArray before, JsonArray after, String table, String[] columns, String[] fields)
+      throws SQLException {
+    Map<String, JsonObject> previous = byId(before), current = byId(after);
+    try (PreparedStatement delete =
+        connection.prepareStatement("DELETE FROM " + table + " WHERE id = ?")) {
+      for (String id : previous.keySet())
+        if (!current.containsKey(id)) {
+          delete.setString(1, id);
+          delete.addBatch();
+        }
+      delete.executeBatch();
+    }
+    String placeholders = String.join(",", java.util.Collections.nCopies(fields.length, "?"));
+    try (PreparedStatement statement =
+        connection.prepareStatement(
+            "MERGE INTO "
+                + table
+                + " ("
+                + String.join(",", columns)
+                + ") KEY(id) VALUES ("
+                + placeholders
+                + ")")) {
+      for (var entry : current.entrySet()) {
+        JsonObject row = entry.getValue();
+        if (row.equals(previous.get(entry.getKey()))) continue;
         for (int i = 0; i < fields.length; i++)
-          statement.setString(i + 1, row.has(fields[i]) ? row.get(fields[i]).getAsString() : null);
+          statement.setString(
+              i + 1,
+              row.has(fields[i]) && !row.get(fields[i]).isJsonNull()
+                  ? row.get(fields[i]).getAsString()
+                  : null);
         statement.addBatch();
       }
       statement.executeBatch();

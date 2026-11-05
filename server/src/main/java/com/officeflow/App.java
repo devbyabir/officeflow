@@ -133,7 +133,22 @@ public final class App {
         return;
       }
       Accounts.Account account = account(exchange);
-      if (path.equals("/api/state") && exchange.getRequestMethod().equals("GET"))
+      if (path.equals("/api/logout")) {
+        body(exchange);
+        sessions.remove(exchange.getRequestHeaders().getFirst("Authorization").substring(7));
+        json(exchange, 200, object("message", "Signed out."));
+      } else if (path.equals("/api/password/change")) {
+        JsonObject data = body(exchange);
+        service.changePassword(account, value(data, "currentPassword"), value(data, "newPassword"));
+        invalidateSessions(account.id());
+        json(exchange, 200, object("message", "Password changed. Sign in again."));
+      } else if (path.equals("/api/password/reset")) {
+        JsonObject data = body(exchange);
+        String id = value(data, "id");
+        service.resetPassword(account, id, value(data, "newPassword"));
+        invalidateSessions(id);
+        json(exchange, 200, object("message", "Password reset. Existing sessions ended."));
+      } else if (path.equals("/api/state") && exchange.getRequestMethod().equals("GET"))
         json(exchange, 200, service.state(account));
       else if (path.equals("/api/session") && exchange.getRequestMethod().equals("GET")) {
         service.state(account);
@@ -144,10 +159,11 @@ public final class App {
         JsonObject data = body(exchange);
         if (!data.has("data") || !data.get("data").isJsonObject())
           throw new IllegalArgumentException("Command data is required.");
-        json(
-            exchange,
-            200,
-            service.execute(account, value(data, "action"), data.getAsJsonObject("data")));
+        JsonObject result =
+            service.execute(account, value(data, "action"), data.getAsJsonObject("data"));
+        if (value(data, "action").equals("deleteTeacher"))
+          invalidateSessions(value(data.getAsJsonObject("data"), "id"));
+        json(exchange, 200, result);
       } else if (path.equals("/api/import")) {
         JsonObject data = body(exchange);
         json(exchange, 200, service.importRows(account, value(data, "type"), value(data, "csv")));
@@ -168,6 +184,10 @@ public final class App {
       System.err.println("Request failed: " + exception.getClass().getSimpleName());
       json(exchange, 500, object("error", "The request could not be completed."));
     }
+  }
+
+  private void invalidateSessions(String id) {
+    sessions.entrySet().removeIf(entry -> entry.getValue().account().id().equals(id));
   }
 
   private static JsonObject actor(Accounts.Account account) {

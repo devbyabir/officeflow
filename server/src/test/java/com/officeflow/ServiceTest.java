@@ -7,6 +7,15 @@ import java.nio.file.Path;
 
 /** Dependency-free integration test, invoked by scripts/test-server.py. */
 public final class ServiceTest {
+  public static final class WriteCounter implements org.h2.api.Trigger {
+    static int writes;
+
+    @Override
+    public void fire(java.sql.Connection connection, Object[] before, Object[] after) {
+      writes++;
+    }
+  }
+
   private static JsonObject data(String json) {
     return JsonParser.parseString(json).getAsJsonObject();
   }
@@ -53,6 +62,24 @@ public final class ServiceTest {
               data(
                   "{\"name\":\"Paper\",\"category\":\"Paper &"
                       + " print\",\"quantity\":10,\"threshold\":2,\"unit\":\"reams\"}"));
+      try (var connection = java.sql.DriverManager.getConnection(url, "sa", "");
+          var statement = connection.createStatement()) {
+        for (String table : new String[] {"teachers", "supplies", "requisitions", "credentials"})
+          statement.execute(
+              "CREATE TRIGGER count_"
+                  + table
+                  + " AFTER INSERT, UPDATE, DELETE ON "
+                  + table
+                  + " FOR EACH ROW CALL 'com.officeflow.ServiceTest$WriteCounter'");
+        WriteCounter.writes = 0;
+        JsonObject edited = state.getAsJsonArray("supplies").get(0).getAsJsonObject().deepCopy();
+        edited.addProperty("unit", "packs");
+        state = service.execute(admin, "saveSupply", edited);
+        check(WriteCounter.writes == 1); // No writes to untouched rows/tables.
+        WriteCounter.writes = 0;
+        service.execute(admin, "saveSupply", edited);
+        check(WriteCounter.writes == 0); // Identical submissions do not rewrite a row.
+      }
       String item =
           state.getAsJsonArray("supplies").get(0).getAsJsonObject().get("id").getAsString();
       JsonObject request = data("{\"quantity\":7}");
@@ -94,10 +121,24 @@ public final class ServiceTest {
       check(Csv.parse("a,b\n\"x,y\",\"line\nnext\"").get(1).get(1).equals("line\nnext"));
       check(Accounts.matches("T1".toCharArray(), store.credential("T1")[1]));
       check(!Accounts.matches("wrong".toCharArray(), store.credential("T1")[1]));
+      denied(() -> service.changePassword(teacher, "wrong", "new-teacher-password"));
+      denied(() -> service.changePassword(teacher, "T1", "short"));
+      denied(() -> service.resetPassword(teacher, "T2", "new-teacher-password"));
+      service.changePassword(teacher, "T1", "new-teacher-password");
+      service.login("T1", "new-teacher-password");
+      JsonObject before = store.read(), broken = before.deepCopy();
+      broken.getAsJsonArray("supplies").get(0).getAsJsonObject().addProperty("quantity", -1);
+      try {
+        store.write(before, broken);
+        throw new AssertionError("Invalid database write accepted");
+      } catch (java.sql.SQLException expected) {
+        check(store.read().equals(before));
+      }
     }
     try (Store reopened = new Store(url, "different")) {
       Service service = new Service(reopened);
       Accounts.Account admin = service.login("001", "test-admin");
+      service.login("T1", "new-teacher-password");
       check(
           service
               .state(admin)

@@ -445,7 +445,8 @@ function requestDialog(id) {
 }
 function identities() {
   if (api) {
-    loginDialog();
+    if (token) accountDialog();
+    else loginDialog();
     return;
   }
   modal(
@@ -467,6 +468,33 @@ function help() {
     "Meet OfficeFlow — your office inventory workspace.",
     `<div class="help-copy"><p><strong>Inventory without the guesswork.</strong> Available stock excludes units reserved for pending requests. Issuing a request deducts stock once; rejecting or cancelling releases the reservation.</p><p><strong>Two sides of one workflow.</strong> Administrators manage supplies and teachers. Teachers request supplies and see their own history.</p><p>${api ? "You are connected to the Java/JDBC service. Access and stock rules are checked on the server." : "This GitHub Pages demo uses fictional sample records saved in this browser. Role switching demonstrates workflows; it is not secure authentication. No data is sent to a Java server."}</p><p>Originally Java coursework, January 2025. Rebuilt as a web application in 2026.</p></div>`,
   );
+}
+function accountDialog() {
+  modal(
+    "Your account",
+    `Signed in as ${escape(actor.id)}.`,
+    `<div class="identity-grid"><button class="button" data-action="change-password">Change password</button>${actor.role === "admin" ? '<button class="button" data-action="reset-password">Reset teacher password</button>' : ""}<button class="button" data-action="logout">Sign out</button></div>`,
+  );
+}
+function passwordDialog(reset = false) {
+  if (reset && !state.teachers.length) {
+    toast("Add a teacher before resetting a password.");
+    return;
+  }
+  modal(
+    reset ? "Reset teacher password" : "Change password",
+    "Use 12-120 characters. All sessions for this account will end after saving.",
+    `<form data-form="${reset ? "reset-password" : "change-password"}"><div class="form-grid">${reset ? `<div class="field full"><label for="field-id">Teacher</label><select id="field-id" name="id">${state.teachers.map((t) => `<option value="${escape(t.id)}">${escape(t.name)} (${escape(t.id)})</option>`).join("")}</select></div>` : field("currentPassword", "Current password", "", "password", 'full autocomplete="current-password"')}${field("newPassword", "New password", "", "password", 'full minlength="12" autocomplete="new-password"')}${field("confirmPassword", "Confirm new password", "", "password", 'full minlength="12" autocomplete="new-password"')}</div>${formEnd(reset ? "Reset password" : "Change password")}`,
+  );
+}
+function clearSession() {
+  token = "";
+  sessionStorage.removeItem("officeflow-token");
+  state = { supplies: [], teachers: [], requests: [] };
+  actor = { role: "teacher", id: "" };
+  query = category = requestFilter = stockFilter = "";
+  tablePage = 1;
+  render();
 }
 function loginDialog() {
   modal(
@@ -552,7 +580,14 @@ document.addEventListener("click", async (event) => {
       $(".pagination").focus();
       return;
     }
-    if (action === "close") closeModal();
+    if (action === "change-password") passwordDialog();
+    else if (action === "reset-password") passwordDialog(true);
+    else if (action === "logout") {
+      await apiCall("logout", {});
+      clearSession();
+      loginDialog();
+      toast("Signed out. Your session has ended.");
+    } else if (action === "close") closeModal();
     else if (action === "new-supply" || action === "edit-supply")
       supplyDialog(id);
     else if (action === "new-teacher" || action === "edit-teacher")
@@ -613,6 +648,24 @@ document.addEventListener("submit", async (event) => {
       sessionStorage.setItem("officeflow-token", token);
       actor = response.actor;
       state = await apiCall("state");
+    } else if (
+      ["change-password", "reset-password"].includes(form.dataset.form)
+    ) {
+      if (data.newPassword !== data.confirmPassword)
+        throw Error("The new passwords do not match.");
+      const reset = form.dataset.form === "reset-password";
+      await apiCall(reset ? "password/reset" : "password/change", data);
+      if (!reset) {
+        clearSession();
+        loginDialog();
+        toast("Password changed. Sign in with your new password.");
+        return;
+      }
+      closeModal();
+      toast(
+        "Password reset. Share the new password with this teacher privately.",
+      );
+      return;
     } else if (form.dataset.form === "confirm")
       await save(form.dataset.command, { id: form.dataset.id });
     else if (form.dataset.form === "import") {
@@ -752,7 +805,7 @@ try {
       $("#mode-badge").innerHTML = "<i></i> Java workspace";
       $("#demo-banner").querySelector("span").textContent =
         "Connected to Java · JDBC persistence · server-validated access";
-      $("#switch-role").textContent = "Sign in / switch account";
+      $("#switch-role").textContent = "Account";
       $("#reset-demo").hidden = true;
       if (token) {
         try {
@@ -761,11 +814,13 @@ try {
           state = await apiCall("state");
           render();
         } catch {
-          token = "";
-          sessionStorage.removeItem("officeflow-token");
+          clearSession();
           loginDialog();
         }
-      } else loginDialog();
+      } else {
+        clearSession();
+        loginDialog();
+      }
     }
   }
 } catch {

@@ -30,6 +30,8 @@ jobs:
         run: |
           mvn -B -f server/pom.xml package dependency:copy-dependencies
           python3 tests/test_server.py
+      - name: Browser regression tests
+        uses: ./.github/actions/ui-tests
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

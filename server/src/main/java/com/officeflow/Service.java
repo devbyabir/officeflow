@@ -5,7 +5,9 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public final class Service {
@@ -28,8 +30,21 @@ public final class Service {
 
   public synchronized JsonObject state(Accounts.Account account) throws SQLException {
     JsonObject state = store.read();
-    requireAccount(state, account);
+    return visibleState(state, account);
+  }
+
+  private JsonObject visibleState(JsonObject snapshot, Accounts.Account account) {
+    requireAccount(snapshot, account);
+    JsonObject state = snapshot.deepCopy();
     if (!account.isAdmin()) {
+      Map<String, Integer> otherReservations = new HashMap<>();
+      for (JsonElement element : snapshot.getAsJsonArray("requests")) {
+        JsonObject request = element.getAsJsonObject();
+        if (string(request, "status").equals("Pending")
+            && !string(request, "teacherId").equals(account.id()))
+          otherReservations.merge(
+              string(request, "supplyId"), request.get("quantity").getAsInt(), Integer::sum);
+      }
       JsonArray own = new JsonArray();
       for (JsonElement element : state.getAsJsonArray("requests"))
         if (string(element.getAsJsonObject(), "teacherId").equals(account.id())) own.add(element);
@@ -38,7 +53,7 @@ public final class Service {
       for (JsonElement element : state.getAsJsonArray("supplies")) {
         JsonObject supply = element.getAsJsonObject();
         supply.addProperty(
-            "reservedByOthers", reserved(store.read(), string(supply, "id"), account.id()));
+            "reservedByOthers", otherReservations.getOrDefault(string(supply, "id"), 0));
       }
       JsonArray profile = new JsonArray();
       profile.add(find(state.getAsJsonArray("teachers"), account.id()));
@@ -49,11 +64,11 @@ public final class Service {
 
   public synchronized JsonObject execute(Accounts.Account account, String action, JsonObject data)
       throws SQLException {
-    JsonObject snapshot = store.read();
+    JsonObject before = store.read(), snapshot = before.deepCopy();
     requireAccount(snapshot, account);
     apply(snapshot, account, action, data);
-    store.write(snapshot);
-    return state(account);
+    store.write(before, snapshot);
+    return visibleState(snapshot, account);
   }
 
   public synchronized JsonObject importRows(Accounts.Account account, String type, String source)
@@ -70,7 +85,7 @@ public final class Service {
       throw new IllegalArgumentException("CSV header does not match the import template.");
     if (rows.size() < 2 || rows.size() > 501)
       throw new IllegalArgumentException("Include 1–500 records.");
-    JsonObject state = store.read();
+    JsonObject before = store.read(), state = before.deepCopy();
     for (int i = 1; i < rows.size(); i++) {
       if (rows.get(i).size() != expected.size())
         throw new IllegalArgumentException("Wrong number of fields at row " + (i + 1));
@@ -83,8 +98,31 @@ public final class Service {
         throw new IllegalArgumentException("Row " + (i + 1) + ": " + exception.getMessage());
       }
     }
-    store.write(state);
-    return state(account);
+    store.write(before, state);
+    return visibleState(state, account);
+  }
+
+  public synchronized void changePassword(Accounts.Account account, String current, String next)
+      throws SQLException {
+    requireAccount(store.read(), account);
+    login(account.id(), current);
+    validatePassword(next);
+    if (current.equals(next)) throw new IllegalArgumentException("Choose a different password.");
+    store.updatePassword(account.id(), next);
+  }
+
+  public synchronized void resetPassword(Accounts.Account account, String id, String next)
+      throws SQLException {
+    requireAdmin(account);
+    if (find(store.read().getAsJsonArray("teachers"), id) == null)
+      throw new IllegalArgumentException("Choose an active teacher account.");
+    validatePassword(next);
+    store.updatePassword(id, next);
+  }
+
+  private static void validatePassword(String password) {
+    if (password.length() < 12 || password.length() > 120 || password.isBlank())
+      throw new IllegalArgumentException("Use a password with 12–120 characters.");
   }
 
   private static void requireAccount(JsonObject state, Accounts.Account account) {

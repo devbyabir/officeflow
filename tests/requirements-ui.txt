@@ -1,0 +1,2 @@
+# Test-only tooling; not part of the frontend or npm dependency graph.
+playwright==1.56.0

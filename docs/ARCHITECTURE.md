@@ -21,9 +21,13 @@ back the operational menus. This version replaces those inconsistent workflows.
 - `App`: HTTP endpoints, bounded bodies, sessions and local static serving.
 
 Java serializes operations through the service. Mutations validate a snapshot,
-then replace relational rows and credentials in one JDBC transaction. This is
-intended for a small single-process workspace. High-volume or multi-process use
-would need row-oriented SQL updates and database-level concurrency control.
+then compare the validated before/after snapshots and batch only changed rows
+with keyed JDBC statements in one transaction. Unchanged rows and password hashes
+are preserved; deletes target specific IDs. Teacher availability aggregates other
+teachers' reservations in one pass over the same snapshot, without per-item database
+reads. Writes return a filtered view of the committed snapshot without rereading it.
+This remains a small single-process workspace: snapshots are still read into memory,
+and multi-process use would need database-level concurrency control.
 
 Requisitions keep historical name/ID snapshots. Those historical references are
 not cascading foreign keys; pending references are protected by the service.
@@ -55,7 +59,13 @@ Teacher snapshots exclude other teachers' profiles and histories. An aggregate
 ## API
 
 `GET /api/health`, `POST /api/login`, `GET /api/session`, `GET /api/state`,
-`POST /api/command`, `POST /api/import`. Protected routes require Bearer sessions.
+`POST /api/command`, `POST /api/import`, `POST /api/logout`,
+`POST /api/password/change`, `POST /api/password/reset`.
+Protected routes require Bearer sessions. Password change verifies the current
+password; admin reset is restricted to active teacher accounts. Both revoke all
+sessions for the affected account after a successful credential update. Logout
+revokes the current token; teacher deletion revokes that teacher's sessions so
+reusing an ID cannot reactivate old tokens.
 The frontend selects Java mode only when health identifies `officeflow`.
 
 ## Scope

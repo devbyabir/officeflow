@@ -79,9 +79,37 @@ def main():
                 assert "password" not in json.dumps(call("/api/state", token=admin)).lower()
                 call("/api/import", {"type":"teachers", "csv":"id,name,department,email\nT200,New,CS,\nT100,Duplicate,CS,"}, admin, 400)
                 assert len(call("/api/state", token=admin)["teachers"]) == 1
+                second = call("/api/login", {"id":"T100", "password":"T100"})["token"]
+                call("/api/password/change", {"currentPassword":"wrong", "newPassword":"teacher-new-password"}, teacher, 403)
+                call("/api/password/change", {"currentPassword":"T100", "newPassword":"short"}, teacher, 400)
+                call("/api/password/reset", {"id":"T100", "newPassword":"teacher-reset-password"}, teacher, 403)
+                call("/api/password/change", {"currentPassword":"T100", "newPassword":"teacher-new-password"}, teacher)
+                call("/api/state", token=teacher, expected=403)
+                call("/api/state", token=second, expected=403)
+                call("/api/login", {"id":"T100", "password":"T100"}, expected=403)
+                teacher = call("/api/login", {"id":"T100", "password":"teacher-new-password"})["token"]
+                # An ordinary inventory write must preserve the changed credential.
+                command("saveSupply", {"name":"QA Clips", "category":"Stationery", "quantity":"2", "threshold":"1", "unit":"boxes"})
+                call("/api/login", {"id":"T100", "password":"teacher-new-password"})
+                call("/api/password/reset", {"id":"001", "newPassword":"forbidden-admin-reset"}, admin, 400)
+                call("/api/password/reset", {"id":"T100", "newPassword":"teacher-reset-password"}, admin)
+                call("/api/state", token=teacher, expected=403)
+                teacher = call("/api/login", {"id":"T100", "password":"teacher-reset-password"})["token"]
+                call("/api/logout", {}, teacher)
+                call("/api/state", token=teacher, expected=403)
+                call("/api/logout", {}, teacher, 403)
+                teacher = call("/api/login", {"id":"T100", "password":"teacher-reset-password"})["token"]
                 command("deleteTeacher", {"id":"T100"})
                 call("/api/state", token=teacher, expected=403)
-                print("HTTP integration passed: static serving, login, RBAC, stock, replay prevention, CSV rollback and deleted-account sessions.")
+                # Recreating an ID must not reactivate an old session.
+                command("saveTeacher", {"id":"T100", "name":"New Teacher", "department":"Science", "email":""})
+                call("/api/state", token=teacher, expected=403)
+                admin2 = call("/api/login", {"id":"001", "password":"test-admin-password"})["token"]
+                call("/api/password/change", {"currentPassword":"test-admin-password", "newPassword":"updated-admin-password"}, admin)
+                call("/api/state", token=admin, expected=403)
+                call("/api/state", token=admin2, expected=403)
+                call("/api/login", {"id":"001", "password":"updated-admin-password"})
+                print("HTTP integration passed: password change/reset/logout and session revocation; static serving, login, RBAC, stock, replay prevention, CSV rollback and deleted-account sessions.")
             finally:
                 process.terminate()
                 process.wait(timeout=10)

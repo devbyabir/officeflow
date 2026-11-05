@@ -22,3 +22,5 @@ jobs:
           javac --release 17 -encoding UTF-8 -Xlint:all,-serial -Werror -cp "server/target/classes:server/target/dependency/*" -d server/target/test-classes server/src/test/java/com/officeflow/ServiceTest.java
           java -cp "server/target/classes:server/target/test-classes:server/target/dependency/*" com.officeflow.ServiceTest
           python3 tests/test_server.py
+      - name: Browser regression tests
+        uses: ./.github/actions/ui-tests
