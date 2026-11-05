@@ -11,6 +11,8 @@
     <title>OfficeFlow · Office supplies, in order.</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./style.css" />
+    <link rel="stylesheet" href="./theme.css" />
+    <script src="./theme.js"></script>
   </head>
   <body>
     <aside class="sidebar" id="sidebar">
@@ -53,6 +55,14 @@
           Workspace <span>/</span> <strong id="breadcrumb">Overview</strong>
         </div>
         <div class="topbar-right">
+          <button
+            class="icon-button theme-toggle"
+            id="theme-toggle"
+            aria-label="Switch to dark mode"
+            aria-pressed="false"
+          >
+            ☾ <span>Dark</span>
+          </button>
           <span class="mode-badge" id="mode-badge"
             ><i></i> Interactive demo</span
           ><button
