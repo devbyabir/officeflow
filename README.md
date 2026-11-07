@@ -43,9 +43,11 @@ installed. It requires Windows 10 or 11 (64-bit) and Microsoft's
 version 14.40 or newer, which many PCs already have. If it's missing or too old,
 the launcher says so and opens that Microsoft page.
 
-1. Open [Releases](https://github.com/devbyabir/officeflow/releases/latest) and
-   download `OfficeFlow-<version>-windows-x64.zip`. Each release lists the ZIP's
-   SHA-256 checksum. To compare it in PowerShell, run
+1. Read the [OfficeFlow end-user terms](TERMS.md). They allow personal use and
+   internal use by offices, schools and businesses. Then open
+   [Releases](https://github.com/devbyabir/officeflow/releases/latest) and
+   download `OfficeFlow-<version>-windows-x64.zip`. Downloading or using it
+   means you accept the terms. Each release lists the ZIP's SHA-256 checksum. To compare it in PowerShell, run
    `Get-FileHash .\OfficeFlow-<version>-windows-x64.zip`.
 2. Extract the whole ZIP to a folder you keep, for example `Documents\OfficeFlow`.
 3. Double-click **Start OfficeFlow.cmd**. The first time, it asks you to choose
@@ -354,5 +356,7 @@ version supports H2 through JDBC for a reproducible local setup.
 ## Ownership
 
 Copyright 2026 **devbyabir**. All rights reserved. See [LICENSE](LICENSE).
+The official Windows package is provided under the [end-user terms](TERMS.md);
+the source code in this repository is governed by [LICENSE](LICENSE).
 Third-party libraries and fonts retain their own licences; see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

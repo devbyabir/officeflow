@@ -75,6 +75,8 @@ jobs:
         run: |
           version=$(python3 -c "import re; print(re.search(r'<artifactId>officeflow</artifactId>\s*<version>([^<]+)</version>', open('server/pom.xml').read()).group(1))")
           echo "VERSION=$version" >> "$GITHUB_ENV"
+          # A versioned copy of the end-user terms, readable on the release page before downloading.
+          cp TERMS.md "release/OfficeFlow-$version-TERMS.md"
           cd release
           sha256sum -c *.zip.sha256
           sha256sum *.zip > SHA256SUMS.txt

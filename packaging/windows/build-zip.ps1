@@ -32,6 +32,7 @@ Copy-WithCrlf "packaging/windows/Start OfficeFlow.cmd" (Join-Path $stage "Start 
 Copy-WithCrlf "packaging/windows/Quick Start.txt" (Join-Path $stage "Quick Start.txt")
 Copy-WithCrlf "packaging/windows/THIRD-PARTY-NOTICES.txt" (Join-Path $stage "THIRD-PARTY-NOTICES.txt")
 Copy-WithCrlf "LICENSE" (Join-Path $stage "LICENSE.txt")
+Copy-WithCrlf "TERMS.md" (Join-Path $stage "TERMS.txt")
 
 # A runtime with only the Java modules OfficeFlow needs, including its legal notices.
 $detected = & (Join-Path $Jdk "bin\jdeps.exe") --ignore-missing-deps --print-module-deps --multi-release 17 $jar

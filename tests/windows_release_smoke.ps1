@@ -79,13 +79,16 @@ try {
   $first = Join-Path $work "First copy"
   Expand-Archive -LiteralPath $Zip -DestinationPath $first
   $folder = Join-Path $first $name
-  foreach ($file in "Start OfficeFlow.cmd", "Quick Start.txt", "LICENSE.txt", "THIRD-PARTY-NOTICES.txt",
+  foreach ($file in "Start OfficeFlow.cmd", "Quick Start.txt", "LICENSE.txt", "TERMS.txt", "THIRD-PARTY-NOTICES.txt",
                     "app\officeflow.jar", "app\launch.ps1", "app\site\index.html",
                     "runtime\bin\java.exe", "runtime\legal\java.base\LICENSE",
                     "licenses\Apache-2.0.txt", "licenses\MPL-2.0.txt") {
     Assert (Test-Path -LiteralPath (Join-Path $folder $file)) "the ZIP contains $file"
   }
   Assert ((Get-Content -Raw -LiteralPath (Join-Path $folder "Start OfficeFlow.cmd")) -match "`r`n") "the launcher has CRLF line endings"
+  $terms = (Get-Content -Raw -LiteralPath (Join-Path $folder "TERMS.txt")) -replace "`r`n", "`n"
+  $source = (Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "..\TERMS.md")) -replace "`r`n", "`n"
+  Assert ($terms -eq $source) "TERMS.txt in the ZIP has the same text as TERMS.md"
   $microsoftFiles = @(Get-ChildItem -Recurse -File -LiteralPath $folder | Where-Object {
       $_.Name -match '^(vcruntime140|vcruntime140_1|msvcp140|ucrtbase)\.dll$|^api-ms-win-.*\.dll$' })
   Assert ($microsoftFiles.Count -eq 0) "the ZIP contains no Microsoft runtime DLLs (found: $($microsoftFiles.Name -join ', '))"

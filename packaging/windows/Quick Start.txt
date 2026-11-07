@@ -17,6 +17,15 @@ Requirements:
   OfficeFlow again. Installing it may need administrator rights.
 
 
+Terms of use
+------------
+OfficeFlow is provided under the end-user terms in TERMS.txt in this folder
+(also attached to the release page as OfficeFlow-<version>-TERMS.md). They
+allow personal use and internal use by offices, schools and businesses,
+including installation on the organisation's computers. Using OfficeFlow
+means you accept them.
+
+
 1. Start OfficeFlow
 -------------------
 1. Extract the whole ZIP to a folder you keep, for example Documents\OfficeFlow.
