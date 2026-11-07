@@ -139,7 +139,6 @@ try {
     -RedirectStandardInput $answers -RedirectStandardOutput $output -RedirectStandardError "$output.err"
   $launched += $process
   Wait-Ready
-  Remove-Item $answers
   $tree = Assert-ProcessTree $process
   Assert (Test-Path -LiteralPath $database) "the workspace is created at $database"
   Assert (-not (Test-Path -LiteralPath (Join-Path $folder "data"))) "nothing is stored in the extracted folder"
@@ -150,6 +149,8 @@ try {
       name = "Release check paper"; category = "Paper & print"; quantity = "12"; threshold = "2"; unit = "reams" } } $admin | Out-Null
   Assert ((Get-Supplies $admin) -contains "Release check paper") "the new supply is listed"
   Stop-Package $process
+  # OfficeFlow.exe held the answers file open as its standard input until it stopped.
+  Remove-Item $answers
   $log = (Get-Content -Raw $output) + (Get-Content -Raw "$output.err")
   Assert ($log -match "Choose a password for the administrator account") "the first run asked for the admin password"
   Assert (-not $log.Contains($adminPassword)) "the admin password does not appear in the launcher's output"
