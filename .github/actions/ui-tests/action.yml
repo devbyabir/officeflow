@@ -6,7 +6,8 @@ runs:
     # Each stage is recorded so the workflow's summary step can show how far setup got.
     - name: Record runner
       shell: bash
-      run: echo "stage: start on $(. /etc/os-release && echo "$PRETTY_NAME")" > "$RUNNER_TEMP/ui-tests.txt"
+      run: |
+        echo "stage: start on $(. /etc/os-release && echo "$PRETTY_NAME")" > "$RUNNER_TEMP/ui-tests.txt"
     - uses: actions/setup-python@v7
       with:
         python-version: "3.12"
