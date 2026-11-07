@@ -294,7 +294,23 @@ public final class App {
       System.exit(2);
       return;
     }
-    App app = new App(new Service(store), site, Integer.getInteger("officeflow.port", 8080));
+    int port = Integer.getInteger("officeflow.port", 8080);
+    App app;
+    try {
+      app = new App(new Service(store), site, port);
+    } catch (java.net.BindException exception) {
+      store.close();
+      System.err.println(
+          "Port "
+              + port
+              + " is already in use, so OfficeFlow cannot start.\n"
+              + "If OfficeFlow is already running in another window, use that window.\n"
+              + "Otherwise close the program using port "
+              + port
+              + ", or start OfficeFlow with \"-Dofficeflow.port=8081\".");
+      System.exit(2);
+      return;
+    }
     Runtime.getRuntime()
         .addShutdownHook(
             new Thread(

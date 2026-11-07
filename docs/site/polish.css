@@ -385,3 +385,11 @@ html:has(meta[name="officeflow-mode"][content="java"]):not([data-java-ready])
   letter-spacing: 0.04em;
   user-select: all;
 }
+.demo-banner #run-on-windows {
+  color: var(--primary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+html:has(meta[name="officeflow-mode"][content="java"]) #run-on-windows {
+  display: none;
+}

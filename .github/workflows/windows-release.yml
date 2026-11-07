@@ -1,0 +1,29 @@
+name: Windows release package
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Java 21 LTS provides the bundled runtime; the code itself targets Java 17.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Build Java application
+        run: mvn -B -f server/pom.xml package
+      - name: Build Windows ZIP with bundled Java runtime
+        shell: pwsh
+        run: ./packaging/windows/build-zip.ps1 -Jdk $env:JAVA_HOME -OutputDirectory dist
+      - name: Test the ZIP without system Java or Maven
+        shell: pwsh
+        run: ./tests/windows_release_smoke.ps1 -Zip (Get-ChildItem dist/*.zip).FullName
+      - name: Upload ZIP and checksum for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: officeflow-windows-x64
+          path: |
+            dist/*.zip
+            dist/*.zip.sha256
+          if-no-files-found: error

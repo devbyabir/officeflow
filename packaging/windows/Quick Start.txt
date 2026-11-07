@@ -1,0 +1,79 @@
+OfficeFlow for Windows - Quick Start
+====================================
+
+OfficeFlow keeps an office's supply inventory and requisitions on one shared
+Windows PC. The administrator and teachers use the same computer and browser,
+signing in and out in turn. Other computers cannot connect to it.
+
+Nothing else needs to be installed: this folder includes its own Java runtime.
+Requirements: Windows 10 or 11 (64-bit) and a web browser.
+
+
+1. Start OfficeFlow
+-------------------
+1. Extract the whole ZIP to a folder you keep, for example Documents\OfficeFlow.
+   Do not run it from inside the ZIP.
+2. Double-click "Start OfficeFlow.cmd".
+   If Windows shows a security warning for a downloaded file, choose Run or
+   More info > Run anyway.
+3. The first time, choose an administrator password (12-120 characters).
+   The administrator account ID is 001.
+4. Your browser opens http://127.0.0.1:8080. Sign in as 001.
+
+Keep the OfficeFlow window open while you use OfficeFlow.
+
+
+2. Stop OfficeFlow
+------------------
+Click the OfficeFlow window and press Ctrl+C. If asked "Terminate batch job
+(Y/N)?", press Y. Your records are saved.
+
+
+3. Teachers
+-----------
+Add teachers under Teachers. OfficeFlow shows each new teacher's temporary
+password once; give it to them privately. At first sign-in they choose their
+own password. Forgotten password: Account > Reset teacher password.
+Always sign out before leaving the shared PC.
+
+
+4. Where your data is
+---------------------
+Your workspace is a single file:
+
+    %LOCALAPPDATA%\OfficeFlow\officeflow.mv.db
+
+It is not inside this folder. To open its folder, paste this into the File
+Explorer address bar:
+
+    %LOCALAPPDATA%\OfficeFlow
+
+
+5. Back up
+----------
+Stop OfficeFlow first. Then copy officeflow.mv.db from the folder above to a
+USB drive or another safe place. To restore, stop OfficeFlow, rename the
+current officeflow.mv.db (for example to officeflow-old.mv.db) and copy your
+backup into its place with the name officeflow.mv.db.
+
+
+6. Update to a newer version
+----------------------------
+Stop OfficeFlow, extract the new ZIP to a new folder and start it from there.
+It opens the same workspace. You can then delete the old folder.
+
+
+If something goes wrong
+-----------------------
+- "Port 8080 is already in use": OfficeFlow may already be running in another
+  window. Use that window, or restart the PC.
+- "The database is already open in another OfficeFlow window": use the window
+  that is already open.
+- The browser says it cannot reach OfficeFlow: the OfficeFlow window was
+  closed. Start OfficeFlow again and press Retry in the browser.
+- Windows blocks PowerShell scripts on this PC (for example by company
+  policy): OfficeFlow's launcher needs Windows PowerShell. Ask your IT
+  administrator.
+
+More help: https://github.com/devbyabir/officeflow
+Licences: LICENSE.txt and THIRD-PARTY-NOTICES.txt in this folder.

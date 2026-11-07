@@ -7,7 +7,9 @@
 An inventory and requisition workspace for one office, rebuilt from my
 third-semester Java final project at Zhengzhou University.
 
+[![Download for Windows](https://img.shields.io/badge/DOWNLOAD_FOR_WINDOWS-ZIP-1F7A4D?style=for-the-badge&logo=windows&logoColor=white)](#run-officeflow-on-windows)
 [![Try with sample data](https://img.shields.io/badge/TRY_WITH_SAMPLE_DATA-OfficeFlow-3B5BDB?style=for-the-badge&logo=githubpages&logoColor=white)](https://devbyabir.github.io/officeflow/)
+
 [![Application checks](https://github.com/devbyabir/officeflow/actions/workflows/checks.yml/badge.svg)](https://github.com/devbyabir/officeflow/actions/workflows/checks.yml)
 
 Java 17+ | JDBC | H2 | JavaScript | GitHub Pages
@@ -28,12 +30,34 @@ Java 17+ | JDBC | H2 | JavaScript | GitHub Pages
 | Inventory | [Preview](docs/images/inventory-light.png) | [Preview](docs/images/inventory-dark.png) |
 | Requisitions | [Preview](docs/images/requests-light.png) | [Preview](docs/images/requests-dark.png) |
 
-## Run OfficeFlow locally
+## Run OfficeFlow on Windows
 
 OfficeFlow runs on **one shared Windows PC**. The administrator and teachers use
 the same computer and browser, signing in and out in turn. The server only
 accepts connections from that computer; other computers on the network cannot
 reach it. Your records are saved in a database file on that PC.
+
+The Windows download needs no Java or other installs; it includes its own Java
+runtime. It requires Windows 10 or 11 (64-bit).
+
+1. Open [Releases](https://github.com/devbyabir/officeflow/releases/latest) and
+   download `OfficeFlow-<version>-windows-x64.zip`. Each release lists the ZIP's
+   SHA-256 checksum. To compare it in PowerShell, run
+   `Get-FileHash .\OfficeFlow-<version>-windows-x64.zip`.
+2. Extract the whole ZIP to a folder you keep, for example `Documents\OfficeFlow`.
+3. Double-click **Start OfficeFlow.cmd**. The first time, it asks you to choose
+   the administrator password (12–120 characters, typing hidden).
+4. Your browser opens **http://127.0.0.1:8080**. Sign in as **`001`**.
+
+Keep the OfficeFlow window open while you use it. To stop OfficeFlow, press
+`Ctrl+C` in that window. Your workspace is stored in
+`%LOCALAPPDATA%\OfficeFlow\officeflow.mv.db`, outside the extracted folder. To
+update, extract a newer ZIP to a new folder and start it there: it opens the same
+workspace. `Quick Start.txt` in the ZIP covers backups and common problems.
+
+## Run from source
+
+The source checkout uses the same workspace location as the Windows download.
 
 ### 1. Build once
 
@@ -292,6 +316,14 @@ A separate Windows workflow runs `tests/windows_smoke.ps1` on a disposable runne
 It follows this README's PowerShell commands: first launch, the
 `%LOCALAPPDATA%\OfficeFlow` database, reopening, checking a backup on port 8081
 and restoring it.
+
+The **Windows release package** workflow builds the downloadable ZIP with
+`packaging/windows/build-zip.ps1`. It bundles a Java runtime made with `jlink`
+from Eclipse Temurin 21. `tests/windows_release_smoke.ps1` then tests the ZIP
+itself, with system Java and Maven removed from `PATH`: extracting it into a
+folder with spaces, launching `Start OfficeFlow.cmd`, first-run setup, a restart,
+and a replacement copy opening the same workspace. The workflow uploads the ZIP
+and its SHA-256 file as a build artifact.
 
 ## Publish the sample workspace
 

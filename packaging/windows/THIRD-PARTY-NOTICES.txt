@@ -1,0 +1,44 @@
+OfficeFlow for Windows - third-party notices
+============================================
+
+OfficeFlow's own code and design: Copyright (c) 2026 devbyabir. All rights
+reserved. See LICENSE.txt.
+
+This package also contains the following third-party software, each under its
+own licence.
+
+
+Java runtime (folder "runtime")
+-------------------------------
+A Java runtime created with jlink from Eclipse Temurin (an OpenJDK build by the
+Eclipse Adoptium project), version recorded in runtime\release.
+
+Licence: GNU General Public License, version 2, with the Classpath Exception.
+The full licence texts, the Classpath Exception and the notices for components
+included in OpenJDK are in runtime\legal (one folder per module, for example
+runtime\legal\java.base\LICENSE and runtime\legal\java.base\ASSEMBLY_EXCEPTION).
+
+Source code: https://github.com/adoptium/jdk21u (the tag matching the version
+in runtime\release) and https://adoptium.net/.
+
+
+Gson 2.11.0 (inside app\officeflow.jar)
+--------------------------------------
+Copyright Google LLC.
+Licence: Apache License 2.0 - licenses\Apache-2.0.txt
+Source code: https://github.com/google/gson
+
+
+H2 Database Engine 2.3.232 (inside app\officeflow.jar)
+-----------------------------------------------------
+Copyright H2 Group.
+H2 is dual licensed under the Mozilla Public License 2.0 and the Eclipse
+Public License 1.0. It is used here under the Mozilla Public License 2.0 -
+licenses\MPL-2.0.txt
+Source code: https://github.com/h2database/h2database (tag version-2.3.232)
+
+
+Inter typeface
+--------------
+SIL Open Font License 1.1. Not included in this package: the web pages load it
+from Google Fonts when the computer is online, and use system fonts otherwise.
