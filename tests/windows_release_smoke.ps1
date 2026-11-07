@@ -187,6 +187,10 @@ try {
   Notice "Replaced the extracted folder (deleted and extracted again) and started a copy in '$second': both opened $database with the supply"
   Write-Output "Windows ZIP test passed."
 }
+catch {
+  Write-Output "::error title=Windows ZIP test failed::$($_.Exception.Message -replace "`r?`n", ' | ')"
+  throw
+}
 finally {
   foreach ($process in $launched) {
     if (-not $process.HasExited) { taskkill /PID $process.Id /T /F 2>$null | Out-Null }

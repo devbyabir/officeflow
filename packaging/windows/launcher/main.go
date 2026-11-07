@@ -25,7 +25,14 @@ const (
 	serverURL          = "http://127.0.0.1:8080/"
 	redistributablePage = "https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist"
 	ctrlCExit          = 0xC000013A // STATUS_CONTROL_C_EXIT
+	createNoWindow     = 0x08000000 // CREATE_NO_WINDOW: Java gets no console of its own
 )
+
+// forwardTo copies Java's output into this window. Wrapping the file makes exec use a pipe,
+// because Java has no console to write to directly.
+type forwardTo struct{ target io.Writer }
+
+func (f forwardTo) Write(data []byte) (int, error) { return f.target.Write(data) }
 
 func main() {
 	os.Exit(run())
@@ -84,19 +91,32 @@ func run() int {
 	fmt.Println("Keep this window open while you use OfficeFlow. To stop it, press Ctrl+C or close this window.")
 	fmt.Println()
 
-	// Ctrl+C and closing the window reach Java too, which closes the database cleanly; the
-	// launcher itself keeps waiting for Java instead of exiting first.
+	// Java runs without its own console, so Windows never ends it abruptly when this window
+	// closes. On Ctrl+C or window close the launcher closes Java's input, and Java shuts down
+	// cleanly (closing the database) while the launcher waits. If the launcher itself ends,
+	// the input closes too.
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 
-	command := exec.Command(java, "-Dofficeflow.site="+site, "-jar", jar)
+	command := exec.Command(java, "-Dofficeflow.site="+site, "-Dofficeflow.stopWhenInputCloses=true", "-jar", jar)
 	command.Dir = root
 	command.Env = environment
-	command.Stdout = os.Stdout
-	command.Stderr = os.Stderr
+	command.Stdout = forwardTo{os.Stdout}
+	command.Stderr = forwardTo{os.Stderr}
+	command.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNoWindow}
+	input, err := command.StdinPipe()
+	if err != nil {
+		return fail("OfficeFlow could not prepare Java: %v", err)
+	}
 	if err := command.Start(); err != nil {
 		return fail("OfficeFlow could not start Java: %v", err)
 	}
+	go func() {
+		<-signals
+		fmt.Println()
+		fmt.Println("Stopping OfficeFlow...")
+		input.Close()
+	}()
 	stopped := make(chan struct{})
 	go openWhenReady(stopped)
 	waitErr := command.Wait()

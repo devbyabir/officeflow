@@ -160,6 +160,11 @@ try {
   Notice "After closing the window and restarting, both test supplies were still there; final Ctrl+C stopped cleanly. officeflow.log: $(@(Get-Content $log) -join ' | ')"
   Write-Output "Launcher console test passed."
 }
+catch {
+  # Visible on the run page without signing in to read the step log.
+  Write-Output "::error title=Launcher console test failed::$($_.Exception.Message -replace "`r?`n", ' | ')"
+  throw
+}
 finally {
   # Cleanup only. A test that reaches this with OfficeFlow still running has already failed.
   foreach ($process in $launched) {

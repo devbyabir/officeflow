@@ -330,6 +330,22 @@ public final class App {
                 }));
     app.start();
     logEvent(events, "started on port " + app.port());
+    // OfficeFlow.exe stops Java by closing its input (Ctrl+C or closing the window); that also
+    // happens if the launcher itself ends. Exiting runs the shutdown hook above.
+    if (Boolean.getBoolean("officeflow.stopWhenInputCloses")) {
+      Thread watcher =
+          new Thread(
+              () -> {
+                try {
+                  while (System.in.read() != -1) {}
+                } catch (IOException ignored) {
+                }
+                System.exit(0);
+              },
+              "officeflow-stop-when-input-closes");
+      watcher.setDaemon(true);
+      watcher.start();
+    }
     System.out.println("OfficeFlow: http://127.0.0.1:" + app.port());
     System.out.println("Database: " + (file == null ? url : file));
     System.out.println("Web files: " + site.toAbsolutePath());
