@@ -8,7 +8,9 @@ $folder = New-Item -ItemType Directory -Force (Join-Path $Destination "temurin-j
 $zip = Join-Path $folder.FullName $pin.jdk.file
 $ProgressPreference = "SilentlyContinue"
 Invoke-WebRequest "$($pin.download_base)/$($pin.jdk.file)" -OutFile $zip -UseBasicParsing
-$published = ((Invoke-WebRequest "$($pin.download_base)/$($pin.jdk.file).sha256.txt" -UseBasicParsing).Content -split '\s+')[0]
+# Release assets are served as binary, so save the checksum file and read it as text.
+Invoke-WebRequest "$($pin.download_base)/$($pin.jdk.file).sha256.txt" -OutFile "$zip.sha256.txt" -UseBasicParsing
+$published = ((Get-Content -Raw "$zip.sha256.txt").Trim() -split '\s+')[0].ToLowerInvariant()
 $actual = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
 if ($published -ne $pin.jdk.sha256) { throw "Adoptium's published checksum $published differs from the pinned $($pin.jdk.sha256)" }
 if ($actual -ne $pin.jdk.sha256) { throw "Downloaded JDK checksum $actual does not match $($pin.jdk.sha256)" }
