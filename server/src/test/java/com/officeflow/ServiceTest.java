@@ -71,9 +71,20 @@ public final class ServiceTest {
     return result;
   }
 
-  /** The newest request in a visible state (requests are ordered newest first). */
+  /**
+   * The only pending request in a visible state. A command's result lists requests in stored
+   * order with new ones appended, so the first entry is not necessarily the newest.
+   */
   private static String newestRequest(JsonObject state) {
-    return state.getAsJsonArray("requests").get(0).getAsJsonObject().get("id").getAsString();
+    String found = null;
+    for (JsonElement element : state.getAsJsonArray("requests")) {
+      JsonObject request = element.getAsJsonObject();
+      if (!request.get("status").getAsString().equals("Pending")) continue;
+      if (found != null) throw new AssertionError("Expected one pending request");
+      found = request.get("id").getAsString();
+    }
+    if (found == null) throw new AssertionError("Expected a pending request");
+    return found;
   }
 
   private static JsonObject supply(JsonObject state, String name) {

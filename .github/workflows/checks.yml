@@ -35,6 +35,7 @@ jobs:
           for suite in service-tests http-tests ui-tests; do
             file="$RUNNER_TEMP/$suite.txt"
             [ -f "$file" ] || { echo "::warning title=$suite::No output; the suite did not run."; continue; }
-            grep -E "passed|refused|Skipped|skipped|JAR started|^Ran |^OK|FAILED|JavaAccountBrowserTests" "$file" |
-              while IFS= read -r line; do echo "::notice title=$suite::$line"; done
+            lines=$(grep -E "passed|refused|Skipped|skipped|JAR started|^Ran |^OK|FAILED|JavaAccountBrowserTests" "$file" || true)
+            [ -n "$lines" ] || { echo "::warning title=$suite::No summary lines; the suite stopped early."; continue; }
+            while IFS= read -r line; do echo "::notice title=$suite::$line"; done <<< "$lines"
           done

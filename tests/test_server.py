@@ -116,6 +116,13 @@ def temporary_password(result, teacher):
     return passwords[teacher]
 
 
+def pending_request(state):
+    """The only pending request. Command results append new requests, so [0] is not newest."""
+    pending = [r["id"] for r in state["requests"] if r["status"] == "Pending"]
+    assert len(pending) == 1, state["requests"]
+    return pending[0]
+
+
 def workflow(temp):
     """Fresh setup, first-login restriction, roles, stock rules and session revocation."""
     db = Path(temp) / "workspace" / "officeflow"
@@ -176,7 +183,7 @@ def workflow(temp):
         command("saveSupply", {"name": "Forbidden"}, teacher, 403)
         state = command("request", {"supplyId": item, "quantity": "4", "note": "For class"},
                         teacher)
-        request = state["requests"][0]["id"]
+        request = pending_request(state)
         command("issue", {"id": request}, teacher, 403)
         state = command("issue", {"id": request})
         assert state["supplies"][0]["quantity"] == 8
@@ -186,10 +193,10 @@ def workflow(temp):
         # Rejection and cancellation release the reservation.
         rejected = command("request", {"supplyId": item, "quantity": "8"}, teacher)
         command("request", {"supplyId": item, "quantity": "1"}, teacher, 400)
-        command("reject", {"id": rejected["requests"][0]["id"]})
+        command("reject", {"id": pending_request(rejected)})
         cancelled = command("request", {"supplyId": item, "quantity": "8"}, teacher)
-        command("cancel", {"id": cancelled["requests"][0]["id"]}, admin, 403)
-        command("cancel", {"id": cancelled["requests"][0]["id"]}, teacher)
+        command("cancel", {"id": pending_request(cancelled)}, admin, 403)
+        command("cancel", {"id": pending_request(cancelled)}, teacher)
         assert call("/api/state", token=admin)["supplies"][0]["quantity"] == 8
 
         assert "password" not in json.dumps(call("/api/state", token=admin)).lower()
@@ -277,7 +284,7 @@ def seed_flag_and_backup(temp):
                                        "quantity": "3", "threshold": "1", "unit": "cartridges"})
         supply = state["supplies"][0]["id"]
         request = command("request", {"supplyId": supply, "quantity": "2"}, teacher)
-        command("issue", {"id": request["requests"][0]["id"]})
+        command("issue", {"id": pending_request(request)})
         command("deleteSupply", {"id": supply})
         before = call("/api/state", token=admin)
         assert before["supplies"] == [] and len(before["teachers"]) == 1
