@@ -20,7 +20,7 @@ jobs:
         shell: pwsh
         run: ./tests/windows_release_smoke.ps1 -Zip (Get-ChildItem dist/*.zip).FullName
       - name: Upload ZIP and checksum for review
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: officeflow-windows-x64
           path: |

@@ -54,7 +54,9 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
 Set-Content -NoNewline -Encoding ascii -Path "$zip.sha256" -Value "$hash  $name.zip`n"
 
-$runtime = (Get-Content (Join-Path $stage "runtime\release") | Where-Object { $_ -match '^JAVA_RUNTIME_VERSION=' }) -replace '^JAVA_RUNTIME_VERSION=', ''
+$runtime = (Get-Content (Join-Path $stage "runtime\release") | Where-Object { $_ -match '^JAVA_VERSION=' }) -replace '^JAVA_VERSION=|"', ''
+$vendor = (Get-Content (Join-Path $Jdk "release") | Where-Object { $_ -match '^IMPLEMENTOR_VERSION=' }) -replace '^IMPLEMENTOR_VERSION=|"', ''
+if ($vendor) { $runtime = "$runtime ($vendor)" }
 $size = [math]::Round((Get-Item $zip).Length / 1MB, 1)
 Write-Output "::notice title=Windows ZIP::$name.zip ($size MB) SHA-256 $hash"
 Write-Output "::notice title=Bundled runtime::Java $runtime with modules $modules"
