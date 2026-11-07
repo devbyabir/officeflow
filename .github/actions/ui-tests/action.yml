@@ -11,6 +11,6 @@ runs:
     - shell: bash
       run: python -m playwright install --with-deps chromium
     - shell: bash
-      run: python tests/test_ui.py
+      run: python tests/test_ui.py 2>&1 | tee "$RUNNER_TEMP/ui-tests.txt"
       env:
         OFFICEFLOW_UI_JAVA: "1"

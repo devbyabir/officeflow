@@ -19,6 +19,8 @@ back the operational menus. This version replaces those inconsistent workflows.
 - `Service`: permissions, validation, ownership, stock rules and atomic imports.
 - `Store`: JDBC tables for teachers, supplies, requisitions and credentials.
 - `App`: HTTP endpoints, bounded bodies, sessions and local static serving.
+- `Startup`: checks the web files, database location and first-run admin password
+  before H2 is opened, and refuses the removed `officeflow.seed` option.
 
 Java serializes operations through the service. Mutations validate a snapshot,
 then compare the validated before/after snapshots and batch only changed rows
@@ -39,7 +41,7 @@ not cascading foreign keys; pending references are protected by the service.
 | Classes, inheritance, polymorphism | Administrator and Teacher account types |
 | Exceptions | Validation errors, HTTP feedback and JDBC rollback |
 | Collections | Arrays, maps and session/request collections |
-| File input/output | Sample JSON input, static files, CSV upload/download |
+| File input/output | Static files, H2 database file, CSV upload/download |
 | JDBC | Prepared statements, relational tables and transactions |
 | Teacher CRUD and import | Directory forms and CSV imports |
 | Supply management/import/sort | Inventory forms, search and quantity sorting |
@@ -66,11 +68,25 @@ password; admin reset is restricted to active teacher accounts. Both revoke all
 sessions for the affected account after a successful credential update. Logout
 revokes the current token; teacher deletion revokes that teacher's sessions so
 reusing an ID cannot reactivate old tokens.
-The frontend selects Java mode only when health identifies `officeflow`.
+
+New teachers (form or CSV import) receive a random temporary password, returned
+once in that response as `temporaryPasswords`. Administrator resets are temporary
+too. A session opened with a temporary password may only call `/api/session`,
+`/api/password/change` and `/api/logout`; anything else returns 403 with code
+`PASSWORD_CHANGE_REQUIRED`. Accounts from older workspaces keep working unchanged.
+
+## Java mode and sample mode
+
+`docs/site/index.html` carries `<meta name="officeflow-mode" content="sample">`.
+The Java server serves it as `content="java"`, so the page knows its mode before
+any request. Java mode shows "Connecting…" until `/api/health` answers, then
+sign-in or the workspace; on failure it shows an error with Retry. It never reads
+or writes the browser sample workspace. Every other copy (GitHub Pages, a local
+static server) is the sample workspace and makes no API calls.
 
 ## Scope
 
 GitHub Pages is a browser-only demonstration, not secure shared storage. Java
-binds to loopback. Public demo credentials and teacher-ID initial passwords are
-educational defaults. This is a local portfolio application, not an institutional
-identity system. H2 is supported and tested; original MySQL integration is not claimed.
+binds to loopback and is meant for one shared office PC. This is a small local
+application, not an institutional identity system. H2 is supported and tested;
+original MySQL integration is not claimed.

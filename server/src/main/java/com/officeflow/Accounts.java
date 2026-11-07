@@ -50,6 +50,26 @@ public final class Accounts {
     }
   }
 
+  /** The single password policy for chosen, reset and initial administrator passwords. */
+  public static void validatePassword(String password) {
+    if (password.length() < 12 || password.length() > 120 || password.isBlank())
+      throw new IllegalArgumentException("Use a password with 12–120 characters.");
+  }
+
+  // No 0/O, 1/l/I, so a temporary password can be read aloud or copied by hand.
+  private static final String TEMPORARY_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
+
+  /** A random temporary password such as {@code k7mq-x2pd-9wfn-r4ta} (19 characters). */
+  public static String temporaryPassword() {
+    SecureRandom random = new SecureRandom();
+    StringBuilder result = new StringBuilder();
+    for (int i = 0; i < 16; i++) {
+      if (i > 0 && i % 4 == 0) result.append('-');
+      result.append(TEMPORARY_ALPHABET.charAt(random.nextInt(TEMPORARY_ALPHABET.length())));
+    }
+    return result.toString();
+  }
+
   public static String hash(char[] password) {
     byte[] salt = new byte[16];
     new SecureRandom().nextBytes(salt);

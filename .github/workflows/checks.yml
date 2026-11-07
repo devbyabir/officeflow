@@ -17,10 +17,24 @@ jobs:
         run: npm test
       - name: Build Java application
         run: mvn -B -f server/pom.xml package dependency:copy-dependencies
-      - name: Test HTTP API and JDBC persistence
+      - name: Java service tests
+        shell: bash
         run: |
           javac --release 17 -encoding UTF-8 -Xlint:all,-serial -Werror -cp "server/target/classes:server/target/dependency/*" -d server/target/test-classes server/src/test/java/com/officeflow/ServiceTest.java
-          java -cp "server/target/classes:server/target/test-classes:server/target/dependency/*" com.officeflow.ServiceTest
-          python3 tests/test_server.py
+          java -cp "server/target/classes:server/target/test-classes:server/target/dependency/*" com.officeflow.ServiceTest | tee "$RUNNER_TEMP/service-tests.txt"
+      - name: HTTP integration tests
+        shell: bash
+        run: python3 tests/test_server.py | tee "$RUNNER_TEMP/http-tests.txt"
       - name: Browser regression tests
         uses: ./.github/actions/ui-tests
+      # Publish each suite's summary lines as annotations, visible on the run page.
+      - name: Report what ran
+        if: always()
+        shell: bash
+        run: |
+          for suite in service-tests http-tests ui-tests; do
+            file="$RUNNER_TEMP/$suite.txt"
+            [ -f "$file" ] || { echo "::warning title=$suite::No output; the suite did not run."; continue; }
+            grep -E "passed|refused|Skipped|skipped|JAR started|^Ran |^OK|FAILED|JavaAccountBrowserTests" "$file" |
+              while IFS= read -r line; do echo "::notice title=$suite::$line"; done
+          done

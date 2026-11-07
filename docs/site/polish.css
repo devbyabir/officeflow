@@ -354,3 +354,34 @@ dialog[open] {
     background: var(--primary);
   }
 }
+
+/* Java mode: hide sample-workspace wording until app.js has replaced it. */
+html:has(meta[name="officeflow-mode"][content="java"]):not([data-java-ready])
+  :is(#mode-badge, #demo-banner, #reset-demo) {
+  visibility: hidden;
+}
+.empty .spinner {
+  width: 24px;
+  height: 24px;
+  margin-bottom: var(--space-2);
+}
+.empty .button {
+  margin-top: var(--space-3);
+}
+.temporary-passwords {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+.temporary-passwords li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.temporary-passwords code {
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  user-select: all;
+}

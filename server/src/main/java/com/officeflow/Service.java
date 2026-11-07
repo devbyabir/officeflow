@@ -28,6 +28,37 @@ public final class Service {
         : new Accounts.Teacher(id);
   }
 
+  /** True while the account still has a temporary password that its owner must replace. */
+  public synchronized boolean passwordChangeRequired(String id) throws SQLException {
+    String[] credential = store.credential(id);
+    return credential != null && Boolean.parseBoolean(credential[2]);
+  }
+
+  /** Gives each teacher added by this change a temporary password, returned once to the admin. */
+  private static Map<String, String> temporaryPasswords(JsonObject before, JsonObject after) {
+    Map<String, String> passwords = new java.util.LinkedHashMap<>();
+    for (JsonElement element : after.getAsJsonArray("teachers")) {
+      String id = string(element.getAsJsonObject(), "id");
+      if (find(before.getAsJsonArray("teachers"), id) == null)
+        passwords.put(id, Accounts.temporaryPassword());
+    }
+    return passwords;
+  }
+
+  private static JsonObject withTemporaryPasswords(JsonObject state, Map<String, String> passwords) {
+    if (passwords.isEmpty()) return state;
+    JsonArray list = new JsonArray();
+    passwords.forEach(
+        (id, password) -> {
+          JsonObject entry = new JsonObject();
+          entry.addProperty("id", id);
+          entry.addProperty("password", password);
+          list.add(entry);
+        });
+    state.add("temporaryPasswords", list);
+    return state;
+  }
+
   public synchronized JsonObject state(Accounts.Account account) throws SQLException {
     JsonObject state = store.read();
     return visibleState(state, account);
@@ -67,8 +98,9 @@ public final class Service {
     JsonObject before = store.read(), snapshot = before.deepCopy();
     requireAccount(snapshot, account);
     apply(snapshot, account, action, data);
-    store.write(before, snapshot);
-    return visibleState(snapshot, account);
+    Map<String, String> passwords = temporaryPasswords(before, snapshot);
+    store.write(before, snapshot, passwords);
+    return withTemporaryPasswords(visibleState(snapshot, account), passwords);
   }
 
   public synchronized JsonObject importRows(Accounts.Account account, String type, String source)
@@ -98,31 +130,28 @@ public final class Service {
         throw new IllegalArgumentException("Row " + (i + 1) + ": " + exception.getMessage());
       }
     }
-    store.write(before, state);
-    return visibleState(state, account);
+    Map<String, String> passwords = temporaryPasswords(before, state);
+    store.write(before, state, passwords);
+    return withTemporaryPasswords(visibleState(state, account), passwords);
   }
 
   public synchronized void changePassword(Accounts.Account account, String current, String next)
       throws SQLException {
     requireAccount(store.read(), account);
     login(account.id(), current);
-    validatePassword(next);
+    Accounts.validatePassword(next);
     if (current.equals(next)) throw new IllegalArgumentException("Choose a different password.");
-    store.updatePassword(account.id(), next);
+    store.updatePassword(account.id(), next, false);
   }
 
+  /** An administrator's reset is a temporary password; the teacher must change it at sign-in. */
   public synchronized void resetPassword(Accounts.Account account, String id, String next)
       throws SQLException {
     requireAdmin(account);
     if (find(store.read().getAsJsonArray("teachers"), id) == null)
       throw new IllegalArgumentException("Choose an active teacher account.");
-    validatePassword(next);
-    store.updatePassword(id, next);
-  }
-
-  private static void validatePassword(String password) {
-    if (password.length() < 12 || password.length() > 120 || password.isBlank())
-      throw new IllegalArgumentException("Use a password with 12–120 characters.");
+    Accounts.validatePassword(next);
+    store.updatePassword(id, next, true);
   }
 
   private static void requireAccount(JsonObject state, Accounts.Account account) {

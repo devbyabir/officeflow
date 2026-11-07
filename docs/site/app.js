@@ -51,9 +51,14 @@ const icon = (name) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.inventory}</svg>`;
 const badge = (status) =>
   `<span class="badge ${{ "Low stock": "low", "Out of stock": "out", Pending: "pending", Issued: "issued", Rejected: "rejected", Cancelled: "cancelled" }[status] || ""}">${escape(status)}</span>`;
+// The Java server marks the page it serves; GitHub Pages and other static copies stay "sample".
+// Java mode never reads or writes the browser's sample workspace.
+const JAVA_MODE =
+  document.querySelector('meta[name="officeflow-mode"]')?.content === "java";
 let state,
-  actor = { role: "admin", id: "admin" },
-  api = false,
+  actor = JAVA_MODE ? { role: "teacher", id: "" } : { role: "admin", id: "admin" },
+  api = JAVA_MODE,
+  connection = JAVA_MODE ? "connecting" : "ready",
   token = sessionStorage.getItem("officeflow-token") || "";
 let query = "",
   category = "",
@@ -67,38 +72,52 @@ let tablePage = 1,
 let lastRenderedPage = "";
 const animatedWorkspaces = new Set();
 let closingAnimation;
-try {
-  const saved = JSON.parse(localStorage.getItem(STORE_KEY));
-  state = saved || seed();
-  if (
-    !Array.isArray(state.supplies) ||
-    !Array.isArray(state.teachers) ||
-    !Array.isArray(state.requests)
-  )
-    throw Error();
-} catch {
-  state = seed();
-  loadWarning =
-    "Saved demo data could not be loaded. A fresh workspace has been opened.";
-}
+if (JAVA_MODE) state = { supplies: [], teachers: [], requests: [] };
+else
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORE_KEY));
+    state = saved || seed();
+    if (
+      !Array.isArray(state.supplies) ||
+      !Array.isArray(state.teachers) ||
+      !Array.isArray(state.requests)
+    )
+      throw Error();
+  } catch {
+    state = seed();
+    loadWarning =
+      "Saved demo data could not be loaded. A fresh workspace has been opened.";
+  }
 
 async function apiCall(path, body) {
   const finish = networkLoading(path);
   try {
-    const response = await fetch(`./api/${path}`, {
-      method: body ? "POST" : "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    let response;
+    try {
+      response = await fetch(`./api/${path}`, {
+        method: body ? "POST" : "GET",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch {
+      throw Object.assign(
+        new Error(
+          "OfficeFlow's server is not answering. Check that the OfficeFlow window is still open, then try again.",
+        ),
+        { offline: true },
+      );
+    }
     const result = await response.json();
     if (!response.ok && result.code === "SESSION_EXPIRED") {
       clearSession();
       loginDialog();
       toast("Your session has ended. Please sign in again.");
     }
+    if (!response.ok && result.code === "PASSWORD_CHANGE_REQUIRED")
+      passwordDialog(false, true);
     if (!response.ok)
       throw new Error(
         result.error || "The server could not complete this request.",
@@ -108,6 +127,7 @@ async function apiCall(path, body) {
     finish();
   }
 }
+// Returns any temporary passwords the server created for new teachers (shown once).
 async function save(action, data) {
   let updated;
   if (api) updated = await apiCall("command", { action, data });
@@ -116,7 +136,22 @@ async function save(action, data) {
     // Persist before committing UI state so a quota failure does not look successful.
     localStorage.setItem(STORE_KEY, JSON.stringify(updated));
   }
+  return commit(updated);
+}
+function commit(updated) {
+  const passwords = updated.temporaryPasswords || [];
+  delete updated.temporaryPasswords;
   state = updated;
+  return passwords;
+}
+function temporaryPasswordsDialog(passwords) {
+  modal(
+    passwords.length === 1
+      ? "Give this teacher their temporary password"
+      : "Give these teachers their temporary passwords",
+    "Shown only now. Each teacher signs in with it once and must then choose their own password.",
+    `<div class="help-copy"><ul class="temporary-passwords">${passwords.map((p) => `<li><strong>${escape(p.id)}</strong> <code>${escape(p.password)}</code></li>`).join("")}</ul><p>Share each password privately. If one is lost, use <strong>Account → Reset teacher password</strong>.</p></div><div class="dialog-actions"><button class="button primary" data-action="close">Done</button></div>`,
+  );
 }
 function toast(message) {
   $("#toast").textContent = message;
@@ -366,8 +401,20 @@ function teachers() {
     `<section class="panel"><div class="panel-heading"><div><h2>Teacher directory</h2><p>${state.teachers.length} people in this workspace.</p></div></div>${toolbar("teachers")}<div class="teacher-grid">${rows.map((t) => `<article class="teacher-card"><span class="avatar">${initials(t.name)}</span><h3>${escape(t.name)}</h3><p>${escape(t.department)}</p><p>${escape(t.email || "No email added")}</p><div class="card-actions"><small>${escape(t.id)}</small><button class="text-button" data-action="edit-teacher" data-id="${escape(t.id)}">Edit profile ↗</button></div></article>`).join("")}</div>${!rows.length ? empty("No teachers found", "Try a different search or add a teacher.") : ""}</section>`
   );
 }
+function connectionView() {
+  if (connection === "connecting")
+    return `<section class="panel" aria-busy="true"><div class="empty" role="status"><span class="spinner" aria-hidden="true"></span><strong>Connecting to OfficeFlow…</strong><p>Checking the OfficeFlow server on this computer.</p></div></section>`;
+  return `<section class="panel"><div class="empty" role="alert">${icon("alert")}<strong>OfficeFlow can't reach its server</strong><p>This page was opened from the OfficeFlow server at ${escape(location.origin)}, but the server is not answering. Check that the OfficeFlow window is still open, or start OfficeFlow again, then retry. Nothing was saved in this browser.</p><button class="button primary" data-action="retry-connection">Retry</button></div></section>`;
+}
 function render() {
   page = location.hash.slice(1).split("?")[0] || "overview";
+  if (connection !== "ready") {
+    navigation();
+    $("#breadcrumb").textContent = "Connecting";
+    $("#main").innerHTML = connectionView();
+    lastRenderedPage = "";
+    return;
+  }
   if (
     !["overview", "inventory", "requests", "teachers", "history"].includes(
       page,
@@ -425,7 +472,9 @@ function teacherDialog(id) {
   modal(
     teacher ? "Edit teacher" : "Welcome someone new",
     api
-      ? "New teachers initially sign in with their teacher ID as the password."
+      ? teacher
+        ? "Changes keep this teacher's password."
+        : "OfficeFlow creates a temporary password for this teacher and shows it once after saving."
       : "Demo profiles contain no private credentials.",
     `<form data-form="saveTeacher"><input type="hidden" name="edit" value="${teacher ? "true" : ""}"><div class="form-grid">${field("id", "Teacher ID", teacher?.id || "", "text", teacher ? "readonly" : "")}${field("name", "Full name", teacher?.name || "")}${field("department", "Department", teacher?.department || "")}${field("email", "Email (optional)", teacher?.email || "", "email")}</div>${formEnd(teacher ? "Save changes" : "Add teacher", teacher ? "delete-teacher" : "", teacher?.id)}`,
   );
@@ -450,7 +499,8 @@ function requestDialog(id) {
 }
 function identities() {
   if (api) {
-    if (token) accountDialog();
+    if (connection !== "ready") toast("OfficeFlow is not connected yet.");
+    else if (token) accountDialog();
     else loginDialog();
     return;
   }
@@ -481,15 +531,27 @@ function accountDialog() {
     `<div class="identity-grid"><button class="button" data-action="change-password">Change password</button>${actor.role === "admin" ? '<button class="button" data-action="reset-password">Reset teacher password</button>' : ""}<button class="button" data-action="logout">Sign out</button></div>`,
   );
 }
-function passwordDialog(reset = false) {
+function passwordDialog(reset = false, forced = false) {
   if (reset && !state.teachers.length) {
     toast("Add a teacher before resetting a password.");
     return;
   }
+  // forced: signed in with a temporary password; the server allows nothing else until it changes.
+  const end = forced
+    ? `<div class="form-error" role="alert"></div><div class="dialog-actions"><button class="button" type="button" data-action="logout">Sign out</button><button class="button primary" type="submit">Change password</button></div></form>`
+    : formEnd(reset ? "Reset password" : "Change password");
   modal(
-    reset ? "Reset teacher password" : "Change password",
-    "Use 12-120 characters. All sessions for this account will end after saving.",
-    `<form data-form="${reset ? "reset-password" : "change-password"}"><div class="form-grid">${reset ? `<div class="field full"><label for="field-id">Teacher</label><select id="field-id" name="id">${state.teachers.map((t) => `<option value="${escape(t.id)}">${escape(t.name)} (${escape(t.id)})</option>`).join("")}</select></div>` : field("currentPassword", "Current password", "", "password", 'full autocomplete="current-password"')}${field("newPassword", "New password", "", "password", 'full minlength="12" autocomplete="new-password"')}${field("confirmPassword", "Confirm new password", "", "password", 'full minlength="12" autocomplete="new-password"')}</div>${formEnd(reset ? "Reset password" : "Change password")}`,
+    forced
+      ? "Choose your own password"
+      : reset
+        ? "Reset teacher password"
+        : "Change password",
+    forced
+      ? "You signed in with a temporary password. Choose a new one of 12-120 characters to continue."
+      : reset
+        ? "Use 12-120 characters. This is a temporary password: the teacher must choose their own at next sign-in. Their sessions end now."
+        : "Use 12-120 characters. All sessions for this account will end after saving.",
+    `<form data-form="${reset ? "reset-password" : "change-password"}"><div class="form-grid">${reset ? `<div class="field full"><label for="field-id">Teacher</label><select id="field-id" name="id">${state.teachers.map((t) => `<option value="${escape(t.id)}">${escape(t.name)} (${escape(t.id)})</option>`).join("")}</select></div>` : field("currentPassword", forced ? "Temporary password" : "Current password", "", "password", 'full autocomplete="current-password"')}${field("newPassword", "New password", "", "password", 'full minlength="12" autocomplete="new-password"')}${field("confirmPassword", "Confirm new password", "", "password", 'full minlength="12" autocomplete="new-password"')}</div>${end}`,
   );
 }
 function clearSession() {
@@ -585,7 +647,8 @@ document.addEventListener("click", async (event) => {
       $(".pagination").focus();
       return;
     }
-    if (action === "change-password") passwordDialog();
+    if (action === "retry-connection") connect();
+    else if (action === "change-password") passwordDialog();
     else if (action === "reset-password") passwordDialog(true);
     else if (action === "logout") {
       await apiCall("logout", {});
@@ -645,6 +708,7 @@ document.addEventListener("submit", async (event) => {
   const submitLabel = submit.innerHTML;
   submit.innerHTML = '<span class="spinner" aria-hidden="true"></span> Saving…';
   form.setAttribute("aria-busy", "true");
+  let passwords = [];
   try {
     const data = Object.fromEntries(new FormData(form));
     if (form.dataset.form === "login") {
@@ -652,6 +716,10 @@ document.addEventListener("submit", async (event) => {
       token = response.token;
       sessionStorage.setItem("officeflow-token", token);
       actor = response.actor;
+      if (actor.mustChangePassword) {
+        passwordDialog(false, true);
+        return;
+      }
       state = await apiCall("state");
     } else if (
       ["change-password", "reset-password"].includes(form.dataset.form)
@@ -668,20 +736,22 @@ document.addEventListener("submit", async (event) => {
       }
       closeModal();
       toast(
-        "Password reset. Share the new password with this teacher privately.",
+        "Temporary password set. Share it privately; the teacher chooses their own at sign-in.",
       );
       return;
     } else if (form.dataset.form === "confirm")
-      await save(form.dataset.command, { id: form.dataset.id });
+      passwords = await save(form.dataset.command, { id: form.dataset.id });
     else if (form.dataset.form === "import") {
       const file = data.file;
       if (file.size > 200000) throw Error("CSV must be smaller than 200 KB.");
       const source = await file.text();
       if (api)
-        state = await apiCall("import", {
-          type: form.dataset.type,
-          csv: source,
-        });
+        passwords = commit(
+          await apiCall("import", {
+            type: form.dataset.type,
+            csv: source,
+          }),
+        );
       else {
         const updated = importCSV(state, actor, form.dataset.type, source);
         localStorage.setItem(STORE_KEY, JSON.stringify(updated));
@@ -689,11 +759,12 @@ document.addEventListener("submit", async (event) => {
       }
     } else {
       if ("edit" in data) data.edit = data.edit === "true";
-      await save(form.dataset.form, data);
+      passwords = await save(form.dataset.form, data);
     }
     closeModal();
     render();
     toast("All set. Your workspace is up to date.");
+    if (passwords.length) temporaryPasswordsDialog(passwords);
   } catch (error) {
     errorBox.textContent = error.message;
   } finally {
@@ -779,7 +850,7 @@ $("#reset-demo").onclick = () =>
     `<div class="dialog-actions"><button class="button" data-action="close">Keep my changes</button><button class="button primary" id="confirm-reset">Reset demo</button></div>`,
   );
 document.addEventListener("click", (event) => {
-  if (event.target.id === "confirm-reset") {
+  if (event.target.id === "confirm-reset" && !JAVA_MODE) {
     try {
       const fresh = seed();
       localStorage.setItem(STORE_KEY, JSON.stringify(fresh));
@@ -793,43 +864,70 @@ document.addEventListener("click", (event) => {
     }
   }
 });
-render();
-if (loadWarning) toast(loadWarning);
-// Static hosting returns HTML/404 here. Only the Java server identifies as OfficeFlow.
-try {
-  const response = await fetch("./api/health", {
-    headers: { Accept: "application/json" },
-  });
-  if (
-    response.ok &&
-    response.headers.get("content-type")?.includes("application/json")
-  ) {
-    const health = await response.json();
-    if (health.service === "officeflow") {
-      api = true;
-      $("#mode-badge").innerHTML = "<i></i> Java workspace";
-      $("#demo-banner").querySelector("span").textContent =
-        "Connected to Java · JDBC persistence · server-validated access";
-      $("#switch-role").textContent = "Account";
-      $("#reset-demo").hidden = true;
-      if (token) {
-        try {
-          const session = await apiCall("session");
-          actor = session.actor;
-          state = await apiCall("state");
-          render();
-        } catch {
-          clearSession();
-          loginDialog();
-        }
-      } else {
-        clearSession();
-        loginDialog();
-      }
-    }
+// Java mode: show "Connecting…" until the server answers, then sign-in or the real workspace.
+// It never falls back to the browser sample workspace; a failure shows an error with Retry.
+async function connect() {
+  connection = "connecting";
+  render();
+  let healthy = false;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const response = await fetch("./api/health", {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    healthy =
+      response.ok &&
+      Boolean(response.headers.get("content-type")?.includes("application/json")) &&
+      (await response.json()).service === "officeflow";
+  } catch {
+    healthy = false;
   }
-} catch {
-  /* Offline browser demo remains available. */
+  if (!healthy) {
+    connection = "error";
+    render();
+    return;
+  }
+  connection = "ready";
+  if (!token) {
+    clearSession();
+    loginDialog();
+    return;
+  }
+  try {
+    const session = await apiCall("session");
+    actor = session.actor;
+    if (actor.mustChangePassword) {
+      render();
+      passwordDialog(false, true);
+      return;
+    }
+    state = await apiCall("state");
+    render();
+  } catch (error) {
+    if (error.offline) {
+      connection = "error";
+      render();
+      return;
+    }
+    clearSession();
+    loginDialog();
+  }
+}
+if (JAVA_MODE) {
+  $("#mode-badge").innerHTML = "<i></i> Java workspace";
+  $("#demo-banner").querySelector("span").textContent =
+    "Your OfficeFlow workspace · saved on this computer · server-checked access";
+  $("#switch-role").textContent = "Account";
+  $("#reset-demo").hidden = true;
+  document.documentElement.dataset.javaReady = "";
+  connect();
+} else {
+  render();
+  if (loadWarning) toast(loadWarning);
 }
 
 function timeline(request) {

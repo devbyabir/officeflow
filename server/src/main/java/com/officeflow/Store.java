@@ -16,8 +16,48 @@ import java.util.Set;
 public final class Store implements AutoCloseable {
   private final Connection connection;
 
+  /**
+   * Opens or creates a workspace. {@code adminPassword} is used only when the workspace has no
+   * administrator yet; it must then meet the password policy. Existing workspaces ignore it.
+   */
   public Store(String url, String adminPassword) throws SQLException {
     connection = DriverManager.getConnection(url, "sa", "");
+    try {
+      if (!hasAdministrator()) {
+        try {
+          Accounts.validatePassword(adminPassword == null ? "" : adminPassword);
+        } catch (IllegalArgumentException exception) {
+          throw new IllegalStateException(
+              "A new workspace needs an administrator password of 12-120 characters in"
+                  + " OFFICEFLOW_ADMIN_PASSWORD.");
+        }
+      }
+      createSchema();
+      if (credential("001") == null) addCredential("001", "admin", adminPassword, false);
+    } catch (SQLException | RuntimeException exception) {
+      connection.close();
+      throw exception;
+    }
+  }
+
+  private boolean hasAdministrator() throws SQLException {
+    try (Statement statement = connection.createStatement();
+        ResultSet tables =
+            statement.executeQuery(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PUBLIC'"
+                    + " AND TABLE_NAME = 'CREDENTIALS'")) {
+      tables.next();
+      if (tables.getInt(1) == 0) return false;
+    }
+    try (PreparedStatement statement =
+        connection.prepareStatement("SELECT 1 FROM credentials WHERE id = '001'")) {
+      try (ResultSet result = statement.executeQuery()) {
+        return result.next();
+      }
+    }
+  }
+
+  private void createSchema() throws SQLException {
     try (Statement statement = connection.createStatement()) {
       statement.execute(
           "CREATE TABLE IF NOT EXISTS teachers (id VARCHAR(30) PRIMARY KEY, name VARCHAR(120) NOT"
@@ -35,26 +75,38 @@ public final class Store implements AutoCloseable {
       statement.execute(
           "CREATE TABLE IF NOT EXISTS credentials (id VARCHAR(30) PRIMARY KEY, role VARCHAR(10) NOT"
               + " NULL, password_hash VARCHAR(200) NOT NULL)");
+      // Older workspaces gain the column with FALSE, so existing accounts keep working as before.
+      statement.execute(
+          "ALTER TABLE credentials ADD COLUMN IF NOT EXISTS must_change BOOLEAN DEFAULT FALSE"
+              + " NOT NULL");
     }
-    if (credential("001") == null) addCredential("001", "admin", adminPassword);
   }
 
-  private void addCredential(String id, String role, String password) throws SQLException {
+  private void addCredential(String id, String role, String password, boolean mustChange)
+      throws SQLException {
     try (PreparedStatement statement =
-        connection.prepareStatement("INSERT INTO credentials VALUES (?, ?, ?)")) {
+        connection.prepareStatement(
+            "INSERT INTO credentials (id, role, password_hash, must_change) VALUES (?, ?, ?, ?)")) {
       statement.setString(1, id);
       statement.setString(2, role);
       statement.setString(3, Accounts.hash(password.toCharArray()));
+      statement.setBoolean(4, mustChange);
       statement.executeUpdate();
     }
   }
 
+  /** Returns {role, password hash, "true"/"false" for a required password change}, or null. */
   public String[] credential(String id) throws SQLException {
     try (PreparedStatement statement =
-        connection.prepareStatement("SELECT role, password_hash FROM credentials WHERE id = ?")) {
+        connection.prepareStatement(
+            "SELECT role, password_hash, must_change FROM credentials WHERE id = ?")) {
       statement.setString(1, id);
       try (ResultSet result = statement.executeQuery()) {
-        return result.next() ? new String[] {result.getString(1), result.getString(2)} : null;
+        return result.next()
+            ? new String[] {
+              result.getString(1), result.getString(2), String.valueOf(result.getBoolean(3))
+            }
+            : null;
       }
     }
   }
@@ -117,29 +169,44 @@ public final class Store implements AutoCloseable {
     return rows;
   }
 
-  public void updatePassword(String id, String password) throws SQLException {
+  /**
+   * Stores a new password. {@code mustChange} marks a temporary password that its owner must
+   * replace before using the workspace.
+   */
+  public void updatePassword(String id, String password, boolean mustChange) throws SQLException {
     try (PreparedStatement statement =
-        connection.prepareStatement("UPDATE credentials SET password_hash = ? WHERE id = ?")) {
+        connection.prepareStatement(
+            "UPDATE credentials SET password_hash = ?, must_change = ? WHERE id = ?")) {
       statement.setString(1, Accounts.hash(password.toCharArray()));
-      statement.setString(2, id);
+      statement.setBoolean(2, mustChange);
+      statement.setString(3, id);
       if (statement.executeUpdate() != 1)
         throw new IllegalArgumentException("Account no longer exists.");
     }
   }
 
-  /** Used for initial seeding; normal commands already have the original snapshot. */
-  public void write(JsonObject state) throws SQLException {
-    write(read(), state);
+  /** Persists only changed rows, preserving atomic imports and existing password hashes. */
+  public void write(JsonObject before, JsonObject state) throws SQLException {
+    write(before, state, Map.of());
   }
 
-  /** Persist only changed rows, preserving atomic imports and existing password hashes. */
-  public void write(JsonObject before, JsonObject state) throws SQLException {
+  /**
+   * Persists only changed rows. Each newly added teacher needs a temporary password in {@code
+   * temporaryPasswords}; it is stored as one that must be changed at first sign-in.
+   */
+  public void write(JsonObject before, JsonObject state, Map<String, String> temporaryPasswords)
+      throws SQLException {
     connection.setAutoCommit(false);
     try {
       Map<String, JsonObject> oldTeachers = byId(before.getAsJsonArray("teachers"));
       Map<String, JsonObject> newTeachers = byId(state.getAsJsonArray("teachers"));
       for (String id : newTeachers.keySet())
-        if (!oldTeachers.containsKey(id)) addCredential(id, "teacher", id);
+        if (!oldTeachers.containsKey(id)) {
+          String password = temporaryPasswords.get(id);
+          if (password == null)
+            throw new IllegalStateException("A new teacher needs a temporary password.");
+          addCredential(id, "teacher", password, true);
+        }
       try (PreparedStatement statement =
           connection.prepareStatement(
               "DELETE FROM credentials WHERE id = ? AND role = 'teacher'")) {
