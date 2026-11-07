@@ -30,7 +30,17 @@ var (
 	procGetFileVersionInfo     = versionDLL.NewProc("GetFileVersionInfoW")
 	procVerQueryValue          = versionDLL.NewProc("VerQueryValueW")
 	procShellExecute           = shell32.NewProc("ShellExecuteW")
+	procCreateMutex            = kernel32.NewProc("CreateMutexW")
 )
+
+// holdInstanceMutex creates the "OfficeFlow.Launcher" mutex for as long as this process runs.
+// The installer's AppMutex setting uses it to ask the user to close OfficeFlow before an
+// upgrade or uninstall, instead of replacing files under a running Java.
+func holdInstanceMutex() {
+	if name, err := syscall.UTF16PtrFromString("OfficeFlow.Launcher"); err == nil {
+		procCreateMutex.Call(0, 0, uintptr(unsafe.Pointer(name)))
+	}
+}
 
 type fileVersion [4]uint16
 

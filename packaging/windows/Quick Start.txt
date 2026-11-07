@@ -5,22 +5,22 @@ OfficeFlow keeps an office's supply inventory and requisitions on one shared
 Windows PC. The administrator and teachers use the same computer and browser,
 signing in and out in turn. Other computers cannot connect to it.
 
-This folder includes its own Java runtime, so Java does not need to be installed.
+OfficeFlow includes its own Java runtime, so Java does not need to be installed.
 
 Requirements:
 - Windows 10 or 11 (64-bit) and a web browser.
 - Microsoft Visual C++ Redistributable for Visual Studio 2015-2022 (x64),
-  version 14.40 or newer. Many PCs already have it. If it is missing or too
-  old, OfficeFlow says so and opens Microsoft's official download page:
+  version 14.40 or newer. Many PCs already have it. If it is missing, setup
+  offers to download Microsoft's official installer from Microsoft and run it
+  (Windows asks for administrator permission). OfficeFlow also checks when it
+  starts and opens Microsoft's page if needed:
       https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist
-  Choose the X64 download (vc_redist.x64.exe), install it, then start
-  OfficeFlow again. Installing it may need administrator rights.
 
 
 Terms of use
 ------------
-OfficeFlow is provided under the end-user terms in TERMS.txt in this folder
-(also attached to the release page as OfficeFlow-<version>-TERMS.md). They
+OfficeFlow is provided under the end-user terms in TERMS.txt in the OfficeFlow
+program folder (also attached to the release page as OfficeFlow-<version>-TERMS.md). They
 allow personal use and internal use by offices, schools and businesses,
 including installation on the organisation's computers. Using OfficeFlow
 means you accept them.
@@ -28,9 +28,9 @@ means you accept them.
 
 1. Start OfficeFlow
 -------------------
-1. Extract the whole ZIP to a folder you keep, for example Documents\OfficeFlow.
-   Do not run it from inside the ZIP.
-2. Double-click "OfficeFlow.exe".
+1. Run OfficeFlow-Setup-<version>-x64.exe and follow the steps. No
+   administrator rights are needed for OfficeFlow itself.
+2. Open OfficeFlow from the Start menu.
 3. The first time, choose an administrator password (12-120 characters).
    The administrator account ID is 001.
 4. Your browser opens http://127.0.0.1:8080. Sign in as 001.
@@ -58,7 +58,8 @@ Your workspace is a single file:
 
     %LOCALAPPDATA%\OfficeFlow\officeflow.mv.db
 
-It is not inside this folder. officeflow.log in the same folder records when
+It is not inside the OfficeFlow program folder, so upgrading or uninstalling
+OfficeFlow keeps it. officeflow.log in the same folder records when
 OfficeFlow starts and when it stops cleanly. To open its folder, paste this into the File
 Explorer address bar:
 
@@ -75,8 +76,8 @@ backup into its place with the name officeflow.mv.db.
 
 6. Update to a newer version
 ----------------------------
-Stop OfficeFlow, extract the new ZIP to a new folder and start it from there.
-It opens the same workspace. You can then delete the old folder.
+Stop OfficeFlow, then run the newer OfficeFlow-Setup-<version>-x64.exe. It
+replaces the program and keeps your workspace.
 
 
 If something goes wrong
@@ -90,8 +91,9 @@ If something goes wrong
   that is already open.
 - The browser says it cannot reach OfficeFlow: the OfficeFlow window was
   closed. Start OfficeFlow again and press Retry in the browser.
-- OfficeFlow.exe closes at once: start it from the extracted folder, not
-  from inside the ZIP, and keep the app and runtime folders next to it.
+- Setup says OfficeFlow is running: stop OfficeFlow (Ctrl+C in its window),
+  then continue setup.
+- OfficeFlow closes at once: run the setup again to repair the installation.
 
 More help: https://github.com/devbyabir/officeflow
-Licences: LICENSE.txt and THIRD-PARTY-NOTICES.txt in this folder.
+Licences: LICENSE.txt and THIRD-PARTY-NOTICES.txt in the OfficeFlow program folder.

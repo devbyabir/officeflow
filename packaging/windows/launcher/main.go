@@ -1,6 +1,6 @@
 //go:build windows
 
-// OfficeFlow.exe starts OfficeFlow from the Windows ZIP. It checks the Microsoft Visual C++
+// OfficeFlow.exe starts installed OfficeFlow. It checks the Microsoft Visual C++
 // runtime, asks for the first administrator password with hidden input, starts the bundled Java
 // runtime, opens the browser when the server answers and waits until OfficeFlow stops.
 // Its only child process is runtime\bin\java.exe; it never starts cmd.exe or PowerShell.
@@ -40,6 +40,7 @@ func main() {
 
 func run() int {
 	setConsoleTitle("OfficeFlow")
+	holdInstanceMutex()
 	executable, err := os.Executable()
 	if err != nil {
 		return fail("OfficeFlow could not find its own folder: %v", err)
@@ -54,11 +55,11 @@ func run() int {
 
 	if !exists(java) {
 		return fail("The Java runtime is missing from this folder:\n  %s\n"+
-			"Extract the whole OfficeFlow ZIP again, then start OfficeFlow.exe from the extracted folder.", java)
+			"Run OfficeFlow setup again to repair the installation.", java)
 	}
 	if !exists(jar) || !exists(filepath.Join(site, "index.html")) {
 		return fail("Some OfficeFlow files are missing from:\n  %s\n"+
-			"Extract the whole OfficeFlow ZIP again. Do not run OfficeFlow from inside the ZIP.", root)
+			"Run OfficeFlow setup again to repair the installation.", root)
 	}
 	if problem := checkVisualCpp(systemDirectory()); problem != "" {
 		openBrowser(redistributablePage)

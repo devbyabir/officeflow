@@ -1,8 +1,7 @@
-# Set aside for a later release: the Windows package with a bundled Java runtime and the
-# native OfficeFlow.exe launcher. It runs only when started by hand and never changes the
-# GitHub release; the release uses .github/workflows/release-zip.yml.
-name: Windows bundled package (set aside)
-on: [workflow_dispatch]
+# Windows x64 installer: the bundled Java runtime and the native OfficeFlow.exe launcher,
+# packed with Inno Setup. Pushes to windows-release put the installer on the draft release.
+name: Windows installer
+on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
 jobs:
@@ -47,24 +46,56 @@ jobs:
           $summary = ($tests | Select-String -Pattern '^--- (PASS|FAIL|SKIP)' | ForEach-Object { $_.Line.Trim() }) -join '%0A'
           Write-Output "::notice title=Launcher unit tests on real Windows with simulated runtime folders::$summary"
           go build -trimpath -ldflags "-s -w" -o "$env:RUNNER_TEMP\launcher\OfficeFlow.exe" .
-      - name: Build Windows ZIP with bundled Java runtime
+      # Stages the program folder (dist\OfficeFlow-<version>-windows-x64) that the installer packs.
+      - name: Stage the program folder with the bundled Java runtime
         shell: pwsh
         run: ./packaging/windows/build-zip.ps1 -Jdk "${{ steps.jdk.outputs.path }}" -Launcher "$env:RUNNER_TEMP\launcher\OfficeFlow.exe" -OutputDirectory dist
-      # A truly missing or outdated Visual C++ runtime needs a clean Windows 10/11 PC:
-      # docs/releases/v1.0.0-clean-windows-test.md.
-      - name: Test the ZIP without system Java or Maven
+      - name: Test the program folder without system Java or Maven
         shell: pwsh
         run: ./tests/windows_release_smoke.ps1 -Zip (Get-ChildItem dist/*.zip).FullName
-      - name: Test the launcher in a real console (masking, browser, Ctrl+C, closing the window)
+      - name: Test the launcher in a real console (masking, browser, Ctrl+C)
         shell: pwsh
         run: ./tests/windows_launcher_console.ps1 -Zip (Get-ChildItem dist/*.zip).FullName
-      - name: Upload ZIP and checksum
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress | Out-Null
+          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found" }
+          "ISCC=$iscc" >> $env:GITHUB_ENV
+          Write-Output "::notice title=Inno Setup::$((Get-Item $iscc).VersionInfo.ProductVersion)"
+      # The release installer, plus a 1.0.1 build of the same files used only to test upgrades.
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          $version = ([xml](Get-Content -Raw server/pom.xml)).project.version
+          $stage = (Resolve-Path "dist/OfficeFlow-$version-windows-x64").Path
+          $script = (Resolve-Path packaging/windows/installer/OfficeFlow.iss).Path
+          $out = Join-Path $PWD "installer"
+          $upgrade = Join-Path $env:RUNNER_TEMP "upgrade-test"
+          & $env:ISCC "/DAppVersion=$version" "/DSourceDir=$stage" "/DOutputDir=$out" $script
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+          & $env:ISCC "/DAppVersion=1.0.1" "/DSourceDir=$stage" "/DOutputDir=$upgrade" $script
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed (upgrade test build)" }
+          $setup = Get-Item (Join-Path $out "OfficeFlow-Setup-$version-x64.exe")
+          $hash = (Get-FileHash -Algorithm SHA256 $setup.FullName).Hash.ToLowerInvariant()
+          Set-Content -NoNewline -Encoding ascii -Path "$($setup.FullName).sha256" -Value "$hash  $($setup.Name)`n"
+          $signatures = @($setup.FullName, (Join-Path $stage "OfficeFlow.exe"), (Join-Path $stage "runtime\bin\java.exe")) |
+            ForEach-Object { $s = Get-AuthenticodeSignature $_; "$(Split-Path $_ -Leaf): $($s.Status)$(if ($s.SignerCertificate) { ' (' + $s.SignerCertificate.GetNameInfo('SimpleName', $false) + ')' })" }
+          Write-Output "::notice title=Installer::$($setup.Name) ($([math]::Round($setup.Length / 1MB, 1)) MB) SHA-256 $hash"
+          Write-Output "::notice title=Signatures::$($signatures -join '; ')"
+          "SETUP=$($setup.FullName)" >> $env:GITHUB_ENV
+          "UPGRADE_SETUP=$(Join-Path $upgrade 'OfficeFlow-Setup-1.0.1-x64.exe')" >> $env:GITHUB_ENV
+      - name: Test install, Start menu launch, saving an item, restart, upgrade and uninstall
+        shell: pwsh
+        run: ./tests/windows_installer_test.ps1 -Installer $env:SETUP -UpgradeInstaller $env:UPGRADE_SETUP
+      - name: Upload installer and checksum
         uses: actions/upload-artifact@v5
         with:
-          name: officeflow-windows-x64
+          name: officeflow-windows-installer
           path: |
-            dist/*.zip
-            dist/*.zip.sha256
+            installer/*.exe
+            installer/*.exe.sha256
           if-no-files-found: error
 
   runtime-source:
@@ -82,3 +113,39 @@ jobs:
             dist/*.zip.sha256
             dist/*-PROVENANCE.md
           if-no-files-found: error
+
+  # Replaces the draft release's files with the installer, the Java runtime's source and the
+  # terms. It never publishes, and it refuses to change a release that is already published.
+  draft-release:
+    needs: [package, runtime-source]
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/windows-release') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v5
+        with:
+          path: release
+          pattern: officeflow-*
+          merge-multiple: true
+      - name: Verify checksums and write release notes
+        shell: bash
+        run: |
+          version=$(python3 -c "import re; print(re.search(r'<artifactId>officeflow</artifactId>\s*<version>([^<]+)</version>', open('server/pom.xml').read()).group(1))")
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          cp TERMS.md "release/OfficeFlow-$version-TERMS.md"
+          cd release
+          sha256sum -c *.sha256
+          sha256sum *.exe *.zip > SHA256SUMS.txt
+          {
+            cat "../docs/releases/v$version.md"
+            printf '\n## Checksums (SHA-256)\n\n```text\n'
+            cat SHA256SUMS.txt
+            printf '```\n'
+          } > ../release-notes.md
+          echo "::notice title=Release checksums::$(tr '\n' ' ' < SHA256SUMS.txt)"
+      - name: Replace the draft release's files
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 packaging/release/update_draft_release.py --replace-all "v$VERSION" release-notes.md release/*

@@ -134,12 +134,12 @@ def main():
                           for p in files)
     provenance = f"""# Java runtime provenance for OfficeFlow {version} (Windows x64)
 
-The `runtime` folder of `OfficeFlow-{version}-windows-x64.zip` was created with `jlink` from
+The `runtime` folder installed by `OfficeFlow-Setup-{version}-x64.exe` was created with `jlink` from
 the {PIN['vendor']} {PIN['distribution']} JDK **{PIN['version']}** for Windows x64
 (`{PIN['jdk']['file']}`, SHA-256 `{PIN['jdk']['sha256']}`), downloaded from
 {PIN['release_page']} and verified before use (`officeflow/fetch-jdk.ps1`). The exact `jlink`
 command and module list are in `officeflow/build-zip.ps1`; the module list for this build is
-also printed in the release notes.
+also printed in the build log.
 
 The runtime is licensed under the GNU General Public License, version 2, with the Classpath
 Exception. The licence, the exception and third-party notices are in the source tree (`LICENSE`,
