@@ -58,7 +58,8 @@ Your workspace is a single file:
 
     %LOCALAPPDATA%\OfficeFlow\officeflow.mv.db
 
-It is not inside this folder. To open its folder, paste this into the File
+It is not inside this folder. officeflow.log in the same folder records when
+OfficeFlow starts and when it stops cleanly. To open its folder, paste this into the File
 Explorer address bar:
 
     %LOCALAPPDATA%\OfficeFlow

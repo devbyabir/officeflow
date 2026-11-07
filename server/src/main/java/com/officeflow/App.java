@@ -311,6 +311,10 @@ public final class App {
       System.exit(2);
       return;
     }
+    Path file = startup.databaseFile(url);
+    // officeflow.log beside the database records starts and clean stops, so an interrupted
+    // shutdown can be told apart from a clean one.
+    Path events = file == null ? null : file.resolveSibling("officeflow.log");
     Runtime.getRuntime()
         .addShutdownHook(
             new Thread(
@@ -318,14 +322,31 @@ public final class App {
                   app.stop();
                   try {
                     store.close();
-                  } catch (SQLException ignored) {
+                    logEvent(events, "stopped cleanly; database closed");
+                    System.out.println("OfficeFlow stopped cleanly; the database is closed.");
+                  } catch (SQLException exception) {
+                    logEvent(events, "stop failed: database close error " + exception.getSQLState());
                   }
                 }));
     app.start();
-    Path file = startup.databaseFile(url);
+    logEvent(events, "started on port " + app.port());
     System.out.println("OfficeFlow: http://127.0.0.1:" + app.port());
     System.out.println("Database: " + (file == null ? url : file));
     System.out.println("Web files: " + site.toAbsolutePath());
     System.out.println("Keep this window open while you use OfficeFlow. Press Ctrl+C to stop.");
+  }
+
+  /** Appends a timestamped line to officeflow.log; logging never stops OfficeFlow. */
+  private static void logEvent(Path log, String message) {
+    if (log == null) return;
+    try {
+      Files.writeString(
+          log,
+          Instant.now() + " " + message + System.lineSeparator(),
+          StandardCharsets.UTF_8,
+          java.nio.file.StandardOpenOption.CREATE,
+          java.nio.file.StandardOpenOption.APPEND);
+    } catch (IOException ignored) {
+    }
   }
 }

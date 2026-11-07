@@ -52,6 +52,9 @@ jobs:
       - name: Test the ZIP without system Java or Maven
         shell: pwsh
         run: ./tests/windows_release_smoke.ps1 -Zip (Get-ChildItem dist/*.zip).FullName
+      - name: Test the launcher in a real console (masking, browser, Ctrl+C, closing the window)
+        shell: pwsh
+        run: ./tests/windows_launcher_console.ps1 -Zip (Get-ChildItem dist/*.zip).FullName
       - name: Upload ZIP and checksum
         uses: actions/upload-artifact@v5
         with:
