@@ -23,11 +23,32 @@ jobs:
           Write-Output "::notice title=Runner JDK (builds the app only)::$($runner -join '; ')"
           $jdk = ./packaging/windows/fetch-jdk.ps1 -Destination $env:RUNNER_TEMP
           "path=$jdk" >> $env:GITHUB_OUTPUT
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: false
+      # The launcher's Visual C++ checks run here on real Windows against folders of copied
+      # files (missing, outdated, current); the runner itself always has a current runtime.
+      - name: Test and build OfficeFlow.exe (x64, no cgo)
+        shell: pwsh
+        working-directory: packaging/windows/launcher
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: |
+          go vet ./...
+          $tests = go test -v -count=1 ./... 2>&1
+          $tests | Write-Output
+          if ($LASTEXITCODE -ne 0) { throw "Launcher tests failed" }
+          $summary = ($tests | Select-String -Pattern '^--- (PASS|FAIL|SKIP)' | ForEach-Object { $_.Line.Trim() }) -join '%0A'
+          Write-Output "::notice title=Launcher unit tests (real Windows, simulated runtime folders)::$summary"
+          go build -trimpath -ldflags "-s -w" -o "$env:RUNNER_TEMP\launcher\OfficeFlow.exe" .
       - name: Build Windows ZIP with bundled Java runtime
         shell: pwsh
-        run: ./packaging/windows/build-zip.ps1 -Jdk "${{ steps.jdk.outputs.path }}" -OutputDirectory dist
-      # Hosted runners always have the Visual C++ runtime, so the missing-runtime message is tested
-      # by hand on a clean Windows 10/11 PC: docs/releases/v1.0.0-clean-windows-test.md.
+        run: ./packaging/windows/build-zip.ps1 -Jdk "${{ steps.jdk.outputs.path }}" -Launcher "$env:RUNNER_TEMP\launcher\OfficeFlow.exe" -OutputDirectory dist
+      # A truly missing or outdated Visual C++ runtime needs a clean Windows 10/11 PC:
+      # docs/releases/v1.0.0-clean-windows-test.md.
       - name: Test the ZIP without system Java or Maven
         shell: pwsh
         run: ./tests/windows_release_smoke.ps1 -Zip (Get-ChildItem dist/*.zip).FullName

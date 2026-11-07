@@ -50,12 +50,12 @@ the launcher says so and opens that Microsoft page.
    means you accept the terms. Each release lists the ZIP's SHA-256 checksum. To compare it in PowerShell, run
    `Get-FileHash .\OfficeFlow-<version>-windows-x64.zip`.
 2. Extract the whole ZIP to a folder you keep, for example `Documents\OfficeFlow`.
-3. Double-click **Start OfficeFlow.cmd**. The first time, it asks you to choose
+3. Double-click **OfficeFlow.exe**. The first time, it asks you to choose
    the administrator password (12–120 characters, typing hidden).
 4. Your browser opens **http://127.0.0.1:8080**. Sign in as **`001`**.
 
 Keep the OfficeFlow window open while you use it. To stop OfficeFlow, press
-`Ctrl+C` in that window. Your workspace is stored in
+`Ctrl+C` in that window or close it. Your workspace is stored in
 `%LOCALAPPDATA%\OfficeFlow\officeflow.mv.db`, outside the extracted folder. To
 update, extract a newer ZIP to a new folder and start it there: it opens the same
 workspace. `Quick Start.txt` in the ZIP covers backups and common problems.
@@ -329,10 +329,11 @@ verifies that download against Adoptium's published checksum.
 `packaging/runtime/build_source_archive.py` builds the matching
 `OfficeFlow-<version>-java-runtime-source.zip`, the runtime's complete
 corresponding source with its provenance. Pushes to `windows-release` attach
-both archives to a draft GitHub Release, which is never published automatically. `tests/windows_release_smoke.ps1` then tests the ZIP
-itself, with system Java and Maven removed from `PATH`: extracting it into a
-folder with spaces, launching `Start OfficeFlow.cmd`, first-run setup, a restart,
-and a replacement copy opening the same workspace. The workflow uploads the ZIP
+both archives to a draft GitHub Release, which is never published automatically.
+`tests/windows_release_smoke.ps1` tests the ZIP itself, with system Java and
+Maven removed from `PATH`: extracting it into a folder with spaces, running the
+native `OfficeFlow.exe` launcher (built from `packaging/windows/launcher` in Go),
+first-run setup, a restart, and replacement copies opening the same workspace. The workflow uploads the ZIP
 and its SHA-256 file as a build artifact.
 
 ## Publish the sample workspace

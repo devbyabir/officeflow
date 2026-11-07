@@ -1,8 +1,10 @@
-# Builds OfficeFlow-<version>-windows-x64.zip with a bundled Java runtime.
-# Run from the repository root on Windows after `mvn -f server/pom.xml package`:
-#   ./packaging/windows/build-zip.ps1 -Jdk $env:JAVA_HOME -OutputDirectory dist
+# Builds OfficeFlow-<version>-windows-x64.zip with a bundled Java runtime and the native
+# OfficeFlow.exe launcher. Run from the repository root on Windows after
+# `mvn -f server/pom.xml package` and building packaging/windows/launcher:
+#   ./packaging/windows/build-zip.ps1 -Jdk $env:JAVA_HOME -Launcher launcher\OfficeFlow.exe -OutputDirectory dist
 param(
   [Parameter(Mandatory = $true)][string]$Jdk,
+  [Parameter(Mandatory = $true)][string]$Launcher,
   [string]$OutputDirectory = "dist"
 )
 $ErrorActionPreference = "Stop"
@@ -13,6 +15,12 @@ if (-not (Test-Path $jar)) { throw "Build first: mvn -f server/pom.xml package (
 foreach ($tool in "jlink.exe", "jdeps.exe") {
   if (-not (Test-Path (Join-Path $Jdk "bin\$tool"))) { throw "$Jdk is not a JDK with $tool" }
 }
+# The launcher must be a 64-bit (x64) Windows program.
+$bytes = [IO.File]::ReadAllBytes((Resolve-Path $Launcher))
+$header = [BitConverter]::ToInt32($bytes, 0x3C)
+if ([Text.Encoding]::ASCII.GetString($bytes, $header, 4) -ne "PE`0`0" -or [BitConverter]::ToUInt16($bytes, $header + 4) -ne 0x8664) {
+  throw "$Launcher is not an x64 Windows executable"
+}
 
 $output = New-Item -ItemType Directory -Force $OutputDirectory
 $stage = Join-Path $output.FullName $name
@@ -20,7 +28,7 @@ if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 $app = New-Item -ItemType Directory -Force (Join-Path $stage "app")
 Copy-Item $jar (Join-Path $app "officeflow.jar")
 Copy-Item -Recurse "docs/site" (Join-Path $app "site")
-Copy-Item "packaging/windows/launch.ps1" $app
+Copy-Item $Launcher (Join-Path $stage "OfficeFlow.exe")
 Copy-Item -Recurse "packaging/windows/licenses" $stage
 
 # Text files a person opens or Windows runs get CRLF line endings.
@@ -28,7 +36,6 @@ function Copy-WithCrlf([string]$Source, [string]$Target) {
   $text = [IO.File]::ReadAllText((Resolve-Path $Source)) -replace "`r?`n", "`r`n"
   [IO.File]::WriteAllText($Target, $text, (New-Object Text.UTF8Encoding $false))
 }
-Copy-WithCrlf "packaging/windows/Start OfficeFlow.cmd" (Join-Path $stage "Start OfficeFlow.cmd")
 Copy-WithCrlf "packaging/windows/Quick Start.txt" (Join-Path $stage "Quick Start.txt")
 Copy-WithCrlf "packaging/windows/THIRD-PARTY-NOTICES.txt" (Join-Path $stage "THIRD-PARTY-NOTICES.txt")
 Copy-WithCrlf "LICENSE" (Join-Path $stage "LICENSE.txt")
@@ -74,6 +81,15 @@ try {
 $leftover = @($entries | Where-Object { ($_ -split '/')[-1] -match $microsoftPattern })
 if ($leftover.Count) { throw "The ZIP still contains Microsoft runtime files: $($leftover -join ', ')" }
 $dllCount = @($entries | Where-Object { $_ -match '\.dll$' }).Count
+# OfficeFlow starts through OfficeFlow.exe only: no script launchers anywhere in the ZIP, and
+# .js files only as browser code for the web interface.
+if (-not ($entries -contains "$name/OfficeFlow.exe")) { throw "The ZIP has no OfficeFlow.exe" }
+$scripts = @($entries | Where-Object { $_ -match '\.(cmd|bat|ps1|psm1|vbs|vbe|wsf|wsh|lnk|hta)$' })
+if ($scripts.Count) { throw "The ZIP contains script launchers: $($scripts -join ', ')" }
+$looseJs = @($entries | Where-Object { $_ -match '\.js$' -and $_ -notlike "$name/app/site/*" })
+if ($looseJs.Count) { throw "The ZIP contains .js files outside app/site: $($looseJs -join ', ')" }
+$executables = @($entries | Where-Object { $_ -match '\.exe$' } | ForEach-Object { ($_ -split '/', 2)[1] })
+Write-Output "::notice title=Launcher::OfficeFlow.exe (x64) is the only launcher; no .cmd/.bat/.ps1/.vbs/.lnk in the ZIP; executables: $($executables -join ', ')"
 Write-Output "::notice title=Microsoft runtime files::Removed $(@($removed).Count) files from runtime\bin; the finished ZIP contains 0 of them and no Microsoft-signed DLL or EXE ($dllCount DLLs in total)"
 $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
 Set-Content -NoNewline -Encoding ascii -Path "$zip.sha256" -Value "$hash  $name.zip`n"

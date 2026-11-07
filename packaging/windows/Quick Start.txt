@@ -30,9 +30,7 @@ means you accept them.
 -------------------
 1. Extract the whole ZIP to a folder you keep, for example Documents\OfficeFlow.
    Do not run it from inside the ZIP.
-2. Double-click "Start OfficeFlow.cmd".
-   If Windows shows a security warning for a downloaded file, choose Run or
-   More info > Run anyway.
+2. Double-click "OfficeFlow.exe".
 3. The first time, choose an administrator password (12-120 characters).
    The administrator account ID is 001.
 4. Your browser opens http://127.0.0.1:8080. Sign in as 001.
@@ -42,8 +40,8 @@ Keep the OfficeFlow window open while you use OfficeFlow.
 
 2. Stop OfficeFlow
 ------------------
-Click the OfficeFlow window and press Ctrl+C. If asked "Terminate batch job
-(Y/N)?", press Y. Your records are saved.
+Click the OfficeFlow window and press Ctrl+C, or close the window. Your
+records are saved.
 
 
 3. Teachers
@@ -91,9 +89,8 @@ If something goes wrong
   that is already open.
 - The browser says it cannot reach OfficeFlow: the OfficeFlow window was
   closed. Start OfficeFlow again and press Retry in the browser.
-- Windows blocks PowerShell scripts on this PC (for example by company
-  policy): OfficeFlow's launcher needs Windows PowerShell. Ask your IT
-  administrator.
+- OfficeFlow.exe closes at once: start it from the extracted folder, not
+  from inside the ZIP, and keep the app and runtime folders next to it.
 
 More help: https://github.com/devbyabir/officeflow
 Licences: LICENSE.txt and THIRD-PARTY-NOTICES.txt in this folder.
