@@ -3,14 +3,26 @@ description: Exercise theme, navigation, mobile layout and dialogs in Chromium
 runs:
   using: composite
   steps:
+    # Each stage is recorded so the workflow's summary step can show how far setup got.
+    - name: Record runner
+      shell: bash
+      run: echo "stage: start on $(. /etc/os-release && echo "$PRETTY_NAME")" > "$RUNNER_TEMP/ui-tests.txt"
     - uses: actions/setup-python@v7
       with:
         python-version: "3.12"
-    - shell: bash
-      run: python -m pip install -r tests/requirements-ui.txt
-    - shell: bash
-      run: python -m playwright install --with-deps chromium
-    - shell: bash
-      run: python tests/test_ui.py 2>&1 | tee "$RUNNER_TEMP/ui-tests.txt"
+    - name: Install test tools
+      shell: bash
+      run: |
+        echo "stage: $(python --version) ready" >> "$RUNNER_TEMP/ui-tests.txt"
+        python -m pip install -r tests/requirements-ui.txt
+        echo "stage: pip install done" >> "$RUNNER_TEMP/ui-tests.txt"
+    - name: Install Chromium
+      shell: bash
+      run: |
+        python -m playwright install --with-deps chromium
+        echo "stage: Chromium installed" >> "$RUNNER_TEMP/ui-tests.txt"
+    - name: Run browser tests
+      shell: bash
+      run: python tests/test_ui.py 2>&1 | tee -a "$RUNNER_TEMP/ui-tests.txt"
       env:
         OFFICEFLOW_UI_JAVA: "1"
