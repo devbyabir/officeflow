@@ -37,8 +37,11 @@ the same computer and browser, signing in and out in turn. The server only
 accepts connections from that computer; other computers on the network cannot
 reach it. Your records are saved in a database file on that PC.
 
-The Windows download needs no Java or other installs; it includes its own Java
-runtime. It requires Windows 10 or 11 (64-bit).
+The Windows download includes its own Java runtime, so Java doesn't need to be
+installed. It requires Windows 10 or 11 (64-bit) and Microsoft's
+[Visual C++ Redistributable (x64)](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist),
+version 14.40 or newer, which many PCs already have. If it's missing or too old,
+the launcher says so and opens that Microsoft page.
 
 1. Open [Releases](https://github.com/devbyabir/officeflow/releases/latest) and
    download `OfficeFlow-<version>-windows-x64.zip`. Each release lists the ZIP's

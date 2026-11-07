@@ -28,6 +28,14 @@ tarball for this build, the Temurin build scripts, the build configuration and
 OfficeFlow's jlink script, with a PROVENANCE.md describing how it was verified.
 
 
+Microsoft Visual C++ runtime
+----------------------------
+Not included. The Microsoft Visual C++ runtime and Universal CRT files that
+the Temurin JDK ships were removed from runtime\bin. OfficeFlow uses the
+Microsoft Visual C++ Redistributable (x64) installed on the computer from
+Microsoft, and the Universal CRT that is part of Windows 10 and 11.
+
+
 Gson 2.11.0 (inside app\officeflow.jar)
 --------------------------------------
 Copyright Google LLC.

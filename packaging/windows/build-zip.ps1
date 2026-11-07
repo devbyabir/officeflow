@@ -47,10 +47,33 @@ foreach ($file in "NOTICE", "LICENSE") {
 }
 if (-not (Test-Path (Join-Path $stage "runtime\legal\java.base\LICENSE"))) { throw "The runtime has no legal notices" }
 
+# Microsoft's Visual C++ runtime and Universal CRT files are not redistributed. The launcher
+# requires the Visual C++ Redistributable installed from Microsoft; Windows 10 and 11 include the UCRT.
+$microsoftPattern = '^(vcruntime140|vcruntime140_1|msvcp140|ucrtbase)\.dll$|^api-ms-win-.*\.dll$'
+$removed = Get-ChildItem -Recurse -File (Join-Path $stage "runtime") | Where-Object { $_.Name -match $microsoftPattern }
+$removed | Remove-Item -Force
+$signed = Get-ChildItem -Recurse -File $stage -Include *.dll, *.exe | Where-Object {
+  $signature = Get-AuthenticodeSignature -LiteralPath $_.FullName
+  $signature.SignerCertificate -and $signature.SignerCertificate.Subject -match 'O=Microsoft Corporation'
+}
+if ($signed) { throw "Microsoft-signed files remain: $(($signed | ForEach-Object Name) -join ', ')" }
+
 $zip = Join-Path $output.FullName "$name.zip"
 if (Test-Path $zip) { Remove-Item -Force $zip }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip, [IO.Compression.CompressionLevel]::Optimal, $true)
+
+# Inspect the finished ZIP itself, not only the staging folder.
+$archive = [IO.Compression.ZipFile]::OpenRead($zip)
+try {
+  $entries = @($archive.Entries | ForEach-Object { $_.FullName })
+} finally {
+  $archive.Dispose()
+}
+$leftover = @($entries | Where-Object { ($_ -split '/')[-1] -match $microsoftPattern })
+if ($leftover.Count) { throw "The ZIP still contains Microsoft runtime files: $($leftover -join ', ')" }
+$dllCount = @($entries | Where-Object { $_ -match '\.dll$' }).Count
+Write-Output "::notice title=Microsoft runtime files::Removed $(@($removed).Count) files from runtime\bin; the finished ZIP contains 0 of them and no Microsoft-signed DLL or EXE ($dllCount DLLs in total)"
 $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
 Set-Content -NoNewline -Encoding ascii -Path "$zip.sha256" -Value "$hash  $name.zip`n"
 

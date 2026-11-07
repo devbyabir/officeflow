@@ -5,8 +5,16 @@ OfficeFlow keeps an office's supply inventory and requisitions on one shared
 Windows PC. The administrator and teachers use the same computer and browser,
 signing in and out in turn. Other computers cannot connect to it.
 
-Nothing else needs to be installed: this folder includes its own Java runtime.
-Requirements: Windows 10 or 11 (64-bit) and a web browser.
+This folder includes its own Java runtime, so Java does not need to be installed.
+
+Requirements:
+- Windows 10 or 11 (64-bit) and a web browser.
+- Microsoft Visual C++ Redistributable for Visual Studio 2015-2022 (x64),
+  version 14.40 or newer. Many PCs already have it. If it is missing or too
+  old, OfficeFlow says so and opens Microsoft's official download page:
+      https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist
+  Choose the X64 download (vc_redist.x64.exe), install it, then start
+  OfficeFlow again. Installing it may need administrator rights.
 
 
 1. Start OfficeFlow
@@ -65,6 +73,9 @@ It opens the same workspace. You can then delete the old folder.
 
 If something goes wrong
 -----------------------
+- "OfficeFlow needs the Microsoft Visual C++ Redistributable": install the
+  X64 Visual C++ Redistributable from the Microsoft page shown, then start
+  OfficeFlow again.
 - "Port 8080 is already in use": OfficeFlow may already be running in another
   window. Use that window, or restart the PC.
 - "The database is already open in another OfficeFlow window": use the window

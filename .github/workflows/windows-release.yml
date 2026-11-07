@@ -26,6 +26,11 @@ jobs:
       - name: Build Windows ZIP with bundled Java runtime
         shell: pwsh
         run: ./packaging/windows/build-zip.ps1 -Jdk "${{ steps.jdk.outputs.path }}" -OutputDirectory dist
+      # Uninstalls the runner's Visual C++ runtime to check the launcher message, then installs
+      # Microsoft's official redistributable for the next test.
+      - name: Missing Visual C++ runtime check, then install the official runtime
+        shell: pwsh
+        run: ./tests/windows_release_missing_runtime.ps1 -Zip (Get-ChildItem dist/*.zip).FullName
       - name: Test the ZIP without system Java or Maven
         shell: pwsh
         run: ./tests/windows_release_smoke.ps1 -Zip (Get-ChildItem dist/*.zip).FullName

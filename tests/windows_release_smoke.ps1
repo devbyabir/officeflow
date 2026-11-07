@@ -86,6 +86,16 @@ try {
     Assert (Test-Path -LiteralPath (Join-Path $folder $file)) "the ZIP contains $file"
   }
   Assert ((Get-Content -Raw -LiteralPath (Join-Path $folder "Start OfficeFlow.cmd")) -match "`r`n") "the launcher has CRLF line endings"
+  $microsoftFiles = @(Get-ChildItem -Recurse -File -LiteralPath $folder | Where-Object {
+      $_.Name -match '^(vcruntime140|vcruntime140_1|msvcp140|ucrtbase)\.dll$|^api-ms-win-.*\.dll$' })
+  Assert ($microsoftFiles.Count -eq 0) "the ZIP contains no Microsoft runtime DLLs (found: $($microsoftFiles.Name -join ', '))"
+  $microsoftSigned = @(Get-ChildItem -Recurse -File -LiteralPath $folder -Include *.dll, *.exe | Where-Object {
+      $signature = Get-AuthenticodeSignature -LiteralPath $_.FullName
+      $signature.SignerCertificate -and $signature.SignerCertificate.Subject -match 'O=Microsoft Corporation' })
+  Assert ($microsoftSigned.Count -eq 0) "the ZIP contains no Microsoft-signed binaries (found: $($microsoftSigned.Name -join ', '))"
+  $runtime = Get-Item (Join-Path $env:SystemRoot "System32\vcruntime140.dll") -ErrorAction SilentlyContinue
+  Notice ("Extracted ZIP inspected: 0 Microsoft runtime DLLs, 0 Microsoft-signed binaries; system x64 Visual C++ runtime " +
+    "$(if ($runtime) { $runtime.VersionInfo.FileVersion } else { 'absent' })")
   Notice "Extracted $name.zip to '$folder' (path with spaces); all expected files present"
 
   # First start: the launcher's own admin setup reads OFFICEFLOW_ADMIN_PASSWORD when it is set,

@@ -8,6 +8,22 @@ $jar = Join-Path $PSScriptRoot "officeflow.jar"
 $site = Join-Path $PSScriptRoot "site"
 $database = Join-Path $env:LOCALAPPDATA "OfficeFlow\officeflow.mv.db"
 $url = "http://127.0.0.1:8080/"
+$redistributablePage = "https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist"
+# The bundled Java runtime was built with the Visual C++ 14.40 toolset.
+$minimumRuntime = [version]"14.40.33810.0"
+
+# Returns a description of the problem, or $null when the x64 Visual C++ runtime is usable.
+function Find-VisualCppProblem {
+  $folder = if ([Environment]::Is64BitProcess) { "System32" } else { "Sysnative" }
+  foreach ($name in "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll") {
+    $path = Join-Path (Join-Path $env:SystemRoot $folder) $name
+    if (-not (Test-Path -LiteralPath $path)) { return "$name is not installed." }
+    $info = (Get-Item -LiteralPath $path).VersionInfo
+    $version = New-Object Version $info.FileMajorPart, $info.FileMinorPart, $info.FileBuildPart, $info.FilePrivatePart
+    if ($version -lt $minimumRuntime) { return "$name is version $version; version $minimumRuntime or newer is needed." }
+  }
+  return $null
+}
 
 function Stop-WithMessage([string]$Message) {
   Write-Host ""
@@ -51,6 +67,13 @@ if (-not (Test-Path -LiteralPath $java)) {
 }
 if (-not (Test-Path -LiteralPath $jar) -or -not (Test-Path -LiteralPath (Join-Path $site "index.html"))) {
   Stop-WithMessage "Some OfficeFlow files are missing from:`n  $root`nExtract the whole OfficeFlow ZIP again. Do not run it from inside the ZIP."
+}
+$problem = Find-VisualCppProblem
+if ($problem) {
+  if (-not $env:OFFICEFLOW_NO_BROWSER) { Start-Process $redistributablePage }
+  Stop-WithMessage ("OfficeFlow needs the Microsoft Visual C++ Redistributable for Visual Studio 2015-2022 (x64), " +
+    "version 14.40 or newer.`n$problem`n`nDownload it from Microsoft's official page:`n  $redistributablePage`n" +
+    "Choose the X64 download (vc_redist.x64.exe), install it, then start OfficeFlow again.")
 }
 if (Test-OfficeFlow) {
   Write-Host "OfficeFlow is already running. Opening $url"
