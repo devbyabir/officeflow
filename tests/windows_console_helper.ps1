@@ -47,6 +47,8 @@ public static class ConsoleDriver {
   [DllImport("kernel32.dll", SetLastError = true)] static extern bool GenerateConsoleCtrlEvent(uint ctrlEvent, uint group);
   [DllImport("kernel32.dll", SetLastError = true)] static extern bool SetConsoleCtrlHandler(IntPtr handler, bool add);
   [DllImport("user32.dll", SetLastError = true)] static extern bool PostMessageW(IntPtr window, uint message, IntPtr w, IntPtr l);
+  [DllImport("user32.dll")] static extern bool IsWindow(IntPtr window);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassNameW(IntPtr window, StringBuilder name, int size);
 
   const uint GenericReadWrite = 0xC0000000, ShareReadWrite = 3, OpenExisting = 3;
 
@@ -105,8 +107,11 @@ public static class ConsoleDriver {
           IntPtr window = GetConsoleWindow();
           FreeConsole(); // detach first, so closing the window does not end this helper
           if (window == IntPtr.Zero) return "ERROR no console window";
+          var className = new StringBuilder(256);
+          GetClassNameW(window, className, className.Capacity);
           if (!PostMessageW(window, 0x0010, IntPtr.Zero, IntPtr.Zero)) return "ERROR close " + Marshal.GetLastWin32Error();
-          return "OK";
+          System.Threading.Thread.Sleep(3000);
+          return "OK class=" + className + " stillOpen=" + IsWindow(window);
       }
       return "ERROR unknown action";
     } finally { FreeConsole(); }

@@ -144,9 +144,19 @@ try {
   Add-Supply "Console check two"
   $java = Get-Java $launcher.Id
   $before = Get-CleanStops
-  Invoke-Console "close" $launcher.Id | Out-Null
-  $line = Assert-CleanStop $launcher $java.ProcessId $before "closing the window"
-  Notice "Closing the window: OfficeFlow.exe exited (code $($launcher.ExitCode)), java.exe exited, port 8080 released; log: $line"
+  $closed = Invoke-Console "close" $launcher.Id
+  if ($launcher.WaitForExit(30000)) {
+    $line = Assert-CleanStop $launcher $java.ProcessId $before "closing the window"
+    Notice "VERIFIED closing the window ($closed): OfficeFlow.exe exited (code $($launcher.ExitCode)), java.exe exited, port 8080 released; log: $line"
+  } elseif ($closed -match 'stillOpen=True') {
+    # The close request did not close this runner's console window, so the launcher never got
+    # the close event. Not a launcher result: stop with Ctrl+C and record it as unverified.
+    Notice "NOT VERIFIED closing the window: on this runner the console window did not close when asked ($closed), so OfficeFlow.exe never received the close event. Needs the manual check."
+    Invoke-Console "ctrlc" $launcher.Id | Out-Null
+    Assert-CleanStop $launcher $java.ProcessId $before "Ctrl+C after the unclosed window" | Out-Null
+  } else {
+    throw "The console window closed ($closed) but OfficeFlow.exe was still running 30 s later"
+  }
 
   # 5. Restart again: both records are there. Stop with Ctrl+C.
   $launcher = Start-Launcher $folder
