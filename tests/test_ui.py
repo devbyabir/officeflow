@@ -5,12 +5,14 @@ Install test-only tools from tests/requirements-ui.txt; no npm dependencies/buil
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import json
 import os
 import threading
 import subprocess
 import tempfile
 import time
 import unittest
+import urllib.request
 from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -145,6 +147,17 @@ class BrowserTests(unittest.TestCase):
         expect(self.page.get_by_role("dialog")).not_to_be_visible()
 
 
+def java_api(base, path, data=None, token=None):
+    """Creates fictional fixture records through the real API (no sample seeding)."""
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    request = urllib.request.Request(base + path, headers=headers,
+        data=json.dumps(data).encode() if data is not None else None)
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return json.loads(response.read())
+
+
 @unittest.skipUnless(os.environ.get("OFFICEFLOW_UI_JAVA") == "1", "Set OFFICEFLOW_UI_JAVA=1 after building Java")
 class JavaAccountBrowserTests(unittest.TestCase):
     @classmethod
@@ -155,7 +168,7 @@ class JavaAccountBrowserTests(unittest.TestCase):
         classpath = os.environ.get("OFFICEFLOW_CP", os.pathsep.join([
             str(ROOT / "server/target/classes"), str(ROOT / "server/target/dependency/*")]))
         cls.process = subprocess.Popen([os.environ.get("JAVA", "java"),
-            "-Dofficeflow.port=0", "-Dofficeflow.seed=true",
+            "-Dofficeflow.port=0",
             "-Dofficeflow.db=jdbc:h2:" + (Path(cls.temp.name) / "db").as_posix(),
             "-Dofficeflow.site=" + str(ROOT / "docs/site"), "-cp", classpath, "com.officeflow.App"],
             stdout=cls.stream, stderr=cls.stream,
@@ -171,6 +184,21 @@ class JavaAccountBrowserTests(unittest.TestCase):
             time.sleep(0.1)
         else:
             raise AssertionError("Java server did not start")
+        # Fictional fixture: T001 keeps a temporary password, T002 has chosen their own.
+        admin = java_api(cls.base, "/api/login",
+                         {"id": "001", "password": "test-admin-password"})["token"]
+        for teacher, name in (("T001", "Alex Morgan"), ("T002", "Sam Chen")):
+            created = java_api(cls.base, "/api/command", {"action": "saveTeacher", "data": {
+                "id": teacher, "name": name, "department": "Science", "email": ""}}, admin)
+            password = created["temporaryPasswords"][0]["password"]
+            if teacher == "T002":
+                token = java_api(cls.base, "/api/login",
+                                 {"id": teacher, "password": password})["token"]
+                java_api(cls.base, "/api/password/change", {"currentPassword": password,
+                    "newPassword": "ui-teacher-password"}, token)
+        java_api(cls.base, "/api/command", {"action": "saveSupply", "data": {
+            "name": "Fixture pencils", "category": "Stationery", "quantity": "9",
+            "threshold": "2", "unit": "boxes"}}, admin)
         cls.playwright = sync_playwright().start()
         cls.addClassCleanup(cls.playwright.stop)
         cls.browser = cls.playwright.chromium.launch()
@@ -183,70 +211,124 @@ class JavaAccountBrowserTests(unittest.TestCase):
         cls.stream.close()
         cls.temp.cleanup()
 
-    def test_password_change_reset_and_logout_in_real_java_ui(self):
+    def new_page(self):
         context = self.browser.new_context(reduced_motion="reduce")
         self.addCleanup(context.close)
         page = context.new_page()
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
+        self.addCleanup(lambda: self.assertEqual(errors, [], "Uncaught browser errors"))
+        return page
+
+    def assert_no_sample_workspace(self, page):
+        self.assertIsNone(page.evaluate("localStorage.getItem('officeflow-demo-v1')"))
+        expect(page.locator("#reset-demo")).to_be_hidden()
+        expect(page.locator("#mode-badge")).to_contain_text("Java workspace")
+
+    def sign_in(self, page, account, password):
+        dialog = page.get_by_role("dialog")
+        expect(dialog.get_by_role("heading", name="Welcome to OfficeFlow")).to_be_visible()
+        dialog.get_by_label("Account ID", exact=True).fill(account)
+        dialog.get_by_label("Password", exact=True).fill(password)
+        dialog.get_by_role("button", name="Sign in", exact=True).click()
+
+    def account_action(self, page, name):
+        page.locator("#switch-role").click()
+        page.get_by_role("button", name=name, exact=True).click()
+
+    def test_connecting_error_and_retry_never_show_the_sample_workspace(self):
+        page = self.new_page()
+        # Simulate the server not answering the health check.
+        page.route("**/api/health", lambda route: route.abort())
         page.goto(self.base)
+        expect(page.get_by_role("alert")).to_contain_text("can't reach its server")
+        expect(page.locator("#main h1")).to_have_count(0)
+        self.assert_no_sample_workspace(page)
+        page.locator("#switch-role").click()
+        expect(page.get_by_role("dialog")).to_be_hidden()
+        page.unroute("**/api/health")
+        page.get_by_role("button", name="Retry", exact=True).click()
+        self.sign_in(page, "T002", "ui-teacher-password")
+        expect(page.get_by_role("dialog")).not_to_be_visible()
+        expect(page.locator("#main h1")).to_be_visible()
+        self.assert_no_sample_workspace(page)
 
-        def sign_in(account, password):
-            dialog = page.get_by_role("dialog")
-            expect(dialog.get_by_role("heading", name="Welcome to OfficeFlow")).to_be_visible()
-            dialog.get_by_label("Account ID", exact=True).fill(account)
-            dialog.get_by_label("Password", exact=True).fill(password)
-            dialog.get_by_role("button", name="Sign in", exact=True).click()
-            expect(dialog).not_to_be_visible()
+    def test_temporary_password_shown_once_and_first_login_requires_a_change(self):
+        page = self.new_page()
+        page.goto(self.base)
+        self.sign_in(page, "001", "test-admin-password")
+        dialog = page.get_by_role("dialog")
+        expect(dialog).not_to_be_visible()
+        page.locator("#navigation").get_by_role("link", name="Teachers").click()
+        page.locator('[data-action="new-teacher"]').click()
+        dialog.get_by_label("Teacher ID", exact=True).fill("T050")
+        dialog.get_by_label("Full name", exact=True).fill("Riley Park")
+        dialog.get_by_label("Department", exact=True).fill("Library")
+        dialog.get_by_role("button", name="Add teacher", exact=True).click()
+        expect(dialog.get_by_role("heading",
+                                  name="Give this teacher their temporary password")).to_be_visible()
+        temporary = dialog.locator(".temporary-passwords code").inner_text()
+        self.assertGreaterEqual(len(temporary), 12)
+        dialog.get_by_role("button", name="Done", exact=True).click()
+        self.account_action(page, "Sign out")
+        self.sign_in(page, "T050", temporary)
+        expect(dialog.get_by_role("heading", name="Choose your own password")).to_be_visible()
+        expect(page.locator("#main")).not_to_contain_text("Fixture pencils")
+        dialog.get_by_label("Temporary password", exact=True).fill(temporary)
+        dialog.get_by_label("New password", exact=True).fill("riley-own-password")
+        dialog.get_by_label("Confirm new password", exact=True).fill("riley-own-password")
+        dialog.get_by_role("button", name="Change password", exact=True).click()
+        self.sign_in(page, "T050", "riley-own-password")
+        expect(dialog).not_to_be_visible()
+        page.locator("#navigation").get_by_role("link", name="Supply inventory").click()
+        expect(page.locator("#inventory-results")).to_contain_text("Fixture pencils")
+        self.assert_no_sample_workspace(page)
 
-        def account_action(name):
-            page.locator("#switch-role").click()
-            page.get_by_role("button", name=name, exact=True).click()
-
-        sign_in("001", "test-admin-password")
-        account_action("Reset teacher password")
+    def test_password_change_reset_and_logout_in_real_java_ui(self):
+        page = self.new_page()
+        page.goto(self.base)
+        self.sign_in(page, "001", "test-admin-password")
+        dialog = page.get_by_role("dialog")
+        expect(dialog).not_to_be_visible()
+        self.account_action(page, "Reset teacher password")
         page.get_by_label("Teacher", exact=True).select_option("T001")
         page.get_by_label("New password", exact=True).fill("ui-reset-password")
         page.get_by_label("Confirm new password", exact=True).fill("ui-reset-password")
-        page.get_by_role("dialog").get_by_role("button", name="Reset password", exact=True).click()
-        expect(page.get_by_role("dialog")).not_to_be_visible()
-        account_action("Sign out")
+        dialog.get_by_role("button", name="Reset password", exact=True).click()
+        expect(dialog).not_to_be_visible()
+        self.account_action(page, "Sign out")
         expect(page.locator("#main")).not_to_contain_text("Alex Morgan")
-        sign_in("T001", "ui-reset-password")
-        account_action("Change password")
-        page.get_by_label("Current password", exact=True).fill("ui-reset-password")
-        page.get_by_label("New password", exact=True).fill("ui-changed-password")
-        page.get_by_label("Confirm new password", exact=True).fill("mismatched-password")
-        page.get_by_role("dialog").get_by_role("button", name="Change password", exact=True).click()
+        # A reset is temporary: the teacher must choose their own password before anything else.
+        self.sign_in(page, "T001", "ui-reset-password")
+        expect(dialog.get_by_role("heading", name="Choose your own password")).to_be_visible()
+        dialog.get_by_label("Temporary password", exact=True).fill("ui-reset-password")
+        dialog.get_by_label("New password", exact=True).fill("ui-changed-password")
+        dialog.get_by_label("Confirm new password", exact=True).fill("mismatched-password")
+        dialog.get_by_role("button", name="Change password", exact=True).click()
         expect(page.locator(".form-error")).to_contain_text("do not match")
-        page.get_by_label("Confirm new password", exact=True).fill("ui-changed-password")
-        page.get_by_role("dialog").get_by_role("button", name="Change password", exact=True).click()
-        sign_in("T001", "ui-changed-password")
+        dialog.get_by_label("Confirm new password", exact=True).fill("ui-changed-password")
+        dialog.get_by_role("button", name="Change password", exact=True).click()
+        self.sign_in(page, "T001", "ui-changed-password")
+        expect(dialog).not_to_be_visible()
         page.locator("#switch-role").click()
         expect(page.get_by_role("button", name="Reset teacher password", exact=True)).to_have_count(0)
         page.get_by_role("button", name="Sign out", exact=True).click()
         page.reload()
-        expect(page.get_by_role("dialog").get_by_role("heading", name="Welcome to OfficeFlow")).to_be_visible()
-        self.assertEqual(errors, [])
+        expect(dialog.get_by_role("heading", name="Welcome to OfficeFlow")).to_be_visible()
+        self.assert_no_sample_workspace(page)
 
     def test_revoked_session_clears_cached_view_on_next_request(self):
-        context = self.browser.new_context(reduced_motion="reduce")
-        self.addCleanup(context.close)
-        page = context.new_page()
-        errors = []
-        page.on("pageerror", lambda error: errors.append(str(error)))
+        page = self.new_page()
         page.goto(self.base)
         dialog = page.get_by_role("dialog")
-        dialog.get_by_label("Account ID", exact=True).fill("T002")
-        dialog.get_by_label("Password", exact=True).fill("T002")
-        dialog.get_by_role("button", name="Sign in", exact=True).click()
+        self.sign_in(page, "T002", "ui-teacher-password")
         expect(dialog).not_to_be_visible()
         # Reset from a separate administrator session while this tab stays open.
-        response = context.request.post(self.base + "/api/login",
+        response = page.context.request.post(self.base + "/api/login",
             data={"id": "001", "password": "test-admin-password"})
         self.assertTrue(response.ok)
         token = response.json()["token"]
-        response = context.request.post(self.base + "/api/password/reset",
+        response = page.context.request.post(self.base + "/api/password/reset",
             headers={"Authorization": "Bearer " + token},
             data={"id": "T002", "newPassword": "revoked-teacher-password"})
         self.assertTrue(response.ok)
@@ -255,7 +337,6 @@ class JavaAccountBrowserTests(unittest.TestCase):
         expect(dialog.get_by_role("heading", name="Welcome to OfficeFlow")).to_be_visible()
         expect(page.locator("#main")).not_to_contain_text("Sam Chen")
         self.assertIsNone(page.evaluate("sessionStorage.getItem('officeflow-token')"))
-        self.assertEqual(errors, [])
 
 
 if __name__ == "__main__":

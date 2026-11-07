@@ -1,0 +1,17 @@
+name: Windows smoke check
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - name: Build Java application
+        run: mvn -B -f server/pom.xml package
+      - name: Documented PowerShell launch, default data path, reopen and restore
+        shell: pwsh
+        run: ./tests/windows_smoke.ps1

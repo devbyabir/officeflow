@@ -16,13 +16,28 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** Local Java HTTP server; static demo and API use the same frontend. */
 public final class App {
   private static final Gson JSON = new Gson();
 
-  private record Session(Accounts.Account account, Instant expires) {}
+  /** {@code mustChange}: the account signed in with a temporary password. */
+  private record Session(Accounts.Account account, Instant expires, boolean mustChange) {}
+
+  /** The only endpoints a session with a temporary password may use. */
+  private static final Set<String> TEMPORARY_PASSWORD_PATHS =
+      Set.of("/api/session", "/api/password/change", "/api/logout");
+
+  /** Signals that the signed-in account must replace its temporary password first. */
+  private static final class PasswordChangeRequired extends SecurityException {
+    private static final long serialVersionUID = 1L;
+
+    PasswordChangeRequired() {
+      super("Choose a new password before using OfficeFlow.");
+    }
+  }
 
   private final Map<String, Session> sessions = new ConcurrentHashMap<>();
   private final Service service;
@@ -85,13 +100,13 @@ public final class App {
     return data.has(key) && data.get(key).isJsonPrimitive() ? data.get(key).getAsString() : "";
   }
 
-  private Accounts.Account account(HttpExchange exchange) {
+  private Session session(HttpExchange exchange) {
     String header = exchange.getRequestHeaders().getFirst("Authorization");
     Session session =
         header != null && header.startsWith("Bearer ") ? sessions.get(header.substring(7)) : null;
     if (session == null || session.expires().isBefore(Instant.now()))
       throw new SecurityException("Your session has ended. Please sign in.");
-    return session.account();
+    return session;
   }
 
   private synchronized Accounts.Account signIn(JsonObject data) throws SQLException {
@@ -122,17 +137,21 @@ public final class App {
       }
       if (path.equals("/api/login")) {
         Accounts.Account account = signIn(body(exchange));
+        boolean mustChange = service.passwordChangeRequired(account.id());
         sessions.entrySet().removeIf(entry -> entry.getValue().expires().isBefore(Instant.now()));
         byte[] bytes = new byte[32];
         new SecureRandom().nextBytes(bytes);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-        sessions.put(token, new Session(account, Instant.now().plusSeconds(28800)));
+        sessions.put(token, new Session(account, Instant.now().plusSeconds(28800), mustChange));
         JsonObject result = object("token", token);
-        result.add("actor", actor(account));
+        result.add("actor", actor(account, mustChange));
         json(exchange, 200, result);
         return;
       }
-      Accounts.Account account = account(exchange);
+      Session session = session(exchange);
+      Accounts.Account account = session.account();
+      if (session.mustChange() && !TEMPORARY_PASSWORD_PATHS.contains(path))
+        throw new PasswordChangeRequired();
       if (path.equals("/api/logout")) {
         body(exchange);
         sessions.remove(exchange.getRequestHeaders().getFirst("Authorization").substring(7));
@@ -153,7 +172,7 @@ public final class App {
       else if (path.equals("/api/session") && exchange.getRequestMethod().equals("GET")) {
         service.state(account);
         JsonObject result = new JsonObject();
-        result.add("actor", actor(account));
+        result.add("actor", actor(account, session.mustChange()));
         json(exchange, 200, result);
       } else if (path.equals("/api/command")) {
         JsonObject data = body(exchange);
@@ -172,6 +191,8 @@ public final class App {
       JsonObject result = object("error", exception.getMessage());
       if ("Your session has ended. Please sign in.".equals(exception.getMessage()))
         result.addProperty("code", "SESSION_EXPIRED");
+      if (exception instanceof PasswordChangeRequired)
+        result.addProperty("code", "PASSWORD_CHANGE_REQUIRED");
       json(exchange, 403, result);
     } catch (IllegalArgumentException | JsonParseException | IllegalStateException exception) {
       json(
@@ -193,9 +214,10 @@ public final class App {
     sessions.entrySet().removeIf(entry -> entry.getValue().account().id().equals(id));
   }
 
-  private static JsonObject actor(Accounts.Account account) {
+  private static JsonObject actor(Accounts.Account account, boolean mustChange) {
     JsonObject a = object("id", account.id());
     a.addProperty("role", account.role());
+    a.addProperty("mustChangePassword", mustChange);
     return a;
   }
 
@@ -230,21 +252,47 @@ public final class App {
     exchange.getResponseHeaders().set("Content-Type", type + "; charset=utf-8");
     exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
     byte[] bytes = Files.readAllBytes(file);
+    if (file.equals(site.resolve("index.html"))) {
+      // Tell the page synchronously that it belongs to this server, so it never starts in the
+      // browser-only sample workspace. Not cached, so a later static copy cannot reuse it.
+      exchange.getResponseHeaders().set("Cache-Control", "no-store");
+      bytes =
+          new String(bytes, StandardCharsets.UTF_8)
+              .replace(Startup.MODE_MARKER, Startup.MODE_MARKER.replace("sample", "java"))
+              .getBytes(StandardCharsets.UTF_8);
+    }
     exchange.sendResponseHeaders(200, bytes.length);
     exchange.getResponseBody().write(bytes);
     exchange.close();
   }
 
   public static void main(String[] args) throws Exception {
-    Path site = Path.of(System.getProperty("officeflow.site", "docs/site"));
-    String url = System.getProperty("officeflow.db", "jdbc:h2:./data/officeflow");
-    String password = System.getenv().getOrDefault("OFFICEFLOW_ADMIN_PASSWORD", "001");
-    Store store = new Store(url, password);
-    if (store.read().getAsJsonArray("supplies").isEmpty()
-        && Boolean.getBoolean("officeflow.seed")) {
-      store.write(
-          JsonParser.parseString(Files.readString(site.resolve("sample-data.json")))
-              .getAsJsonObject());
+    Startup startup =
+        new Startup(System.getenv(), Path.of(""), Startup.repositoryFromCode());
+    Store store;
+    Path site;
+    String url;
+    try {
+      Startup.rejectSeedFlag(System.getProperty("officeflow.seed"));
+      site = startup.site(System.getProperty("officeflow.site"));
+      url = startup.database(System.getProperty("officeflow.db"));
+      startup.requireAdminPasswordForNewWorkspace(url);
+      try {
+        store = new Store(url, System.getenv("OFFICEFLOW_ADMIN_PASSWORD"));
+      } catch (IllegalStateException exception) {
+        throw new Startup.Problem(Startup.newWorkspaceMessage(url));
+      } catch (SQLException exception) {
+        if (exception.getErrorCode() == 90020)
+          throw new Startup.Problem(
+              "The database is already open in another OfficeFlow window:\n  "
+                  + url
+                  + "\nUse that window, or stop it with Ctrl+C and start OfficeFlow again.");
+        throw exception;
+      }
+    } catch (Startup.Problem problem) {
+      System.err.println(problem.getMessage());
+      System.exit(2);
+      return;
     }
     App app = new App(new Service(store), site, Integer.getInteger("officeflow.port", 8080));
     Runtime.getRuntime()
@@ -258,9 +306,10 @@ public final class App {
                   }
                 }));
     app.start();
+    Path file = startup.databaseFile(url);
     System.out.println("OfficeFlow: http://127.0.0.1:" + app.port());
-    System.out.println(
-        "Local Java/JDBC workspace. Set OFFICEFLOW_ADMIN_PASSWORD before first launch to override"
-            + " demo admin password.");
+    System.out.println("Database: " + (file == null ? url : file));
+    System.out.println("Web files: " + site.toAbsolutePath());
+    System.out.println("Keep this window open while you use OfficeFlow. Press Ctrl+C to stop.");
   }
 }
