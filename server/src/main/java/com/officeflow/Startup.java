@@ -56,6 +56,16 @@ final class Startup {
     }
   }
 
+  /** The folder holding officeflow.jar when running from a JAR file (the release ZIP), else null. */
+  static Path jarFolder() {
+    try {
+      Path code = Path.of(App.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+      return Files.isRegularFile(code) ? code.getParent() : null;
+    } catch (Exception exception) {
+      return null;
+    }
+  }
+
   static void rejectSeedFlag(String seedProperty) throws Problem {
     if (seedProperty == null) return;
     throw new Problem(
@@ -68,11 +78,16 @@ final class Startup {
             + "To open your workspace, run the same command without -Dofficeflow.seed.");
   }
 
-  /** The explicit site folder, or the first valid one in the working directory or repository. */
+  /**
+   * The explicit site folder, or the first valid one of: "site" next to officeflow.jar (the
+   * release ZIP), docs/site in the working directory, docs/site in the repository.
+   */
   Path site(String siteProperty) throws Problem {
     List<Path> candidates = new ArrayList<>();
     if (siteProperty != null) candidates.add(workingDirectory.resolve(siteProperty));
     else {
+      Path jarFolder = jarFolder();
+      if (jarFolder != null) candidates.add(jarFolder.resolve("site"));
       candidates.add(workingDirectory.resolve("docs/site"));
       if (repository != null) candidates.add(repository.resolve("docs/site"));
     }

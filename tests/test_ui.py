@@ -63,12 +63,11 @@ class BrowserTests(unittest.TestCase):
         finally:
             self.context.close()
 
-    def test_sample_workspace_label_and_windows_link(self):
+    def test_sample_workspace_label_and_download_link(self):
         expect(self.page.locator("#mode-badge")).to_have_text("Sample workspace")
-        link = self.page.get_by_role("link", name="Run on Windows", exact=True)
+        link = self.page.get_by_role("link", name="Download OfficeFlow", exact=True)
         expect(link).to_be_visible()
-        expect(link).to_have_attribute(
-            "href", "https://github.com/devbyabir/officeflow#run-officeflow-on-windows")
+        expect(link).to_have_attribute("href", "https://github.com/devbyabir/officeflow/releases")
 
     def test_theme_toggle_persists_and_updates_accessible_label(self):
         page = self.page
@@ -230,7 +229,7 @@ class JavaAccountBrowserTests(unittest.TestCase):
     def assert_no_sample_workspace(self, page):
         self.assertIsNone(page.evaluate("localStorage.getItem('officeflow-demo-v1')"))
         expect(page.locator("#reset-demo")).to_be_hidden()
-        expect(page.locator("#run-on-windows")).to_be_hidden()
+        expect(page.locator("#download-officeflow")).to_be_hidden()
         expect(page.locator("#mode-badge")).to_contain_text("Java workspace")
 
     def sign_in(self, page, account, password):

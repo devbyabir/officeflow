@@ -7,7 +7,7 @@
 An inventory and requisition workspace for one office, rebuilt from my
 third-semester Java final project at Zhengzhou University.
 
-[![Download for Windows](https://img.shields.io/badge/DOWNLOAD_FOR_WINDOWS-ZIP-1F7A4D?style=for-the-badge&logo=windows&logoColor=white)](#run-officeflow-on-windows)
+[![Download OfficeFlow](https://img.shields.io/badge/DOWNLOAD-OfficeFlow-1F7A4D?style=for-the-badge&logo=github&logoColor=white)](#download-and-run-officeflow)
 [![Try with sample data](https://img.shields.io/badge/TRY_WITH_SAMPLE_DATA-OfficeFlow-3B5BDB?style=for-the-badge&logo=githubpages&logoColor=white)](https://devbyabir.github.io/officeflow/)
 
 [![Application checks](https://github.com/devbyabir/officeflow/actions/workflows/checks.yml/badge.svg)](https://github.com/devbyabir/officeflow/actions/workflows/checks.yml)
@@ -30,39 +30,51 @@ Java 17+ | JDBC | H2 | JavaScript | GitHub Pages
 | Inventory | [Preview](docs/images/inventory-light.png) | [Preview](docs/images/inventory-dark.png) |
 | Requisitions | [Preview](docs/images/requests-light.png) | [Preview](docs/images/requests-dark.png) |
 
-## Run OfficeFlow on Windows
+## Download and run OfficeFlow
 
-OfficeFlow runs on **one shared Windows PC**. The administrator and teachers use
+OfficeFlow runs on **one shared computer**. The administrator and teachers use
 the same computer and browser, signing in and out in turn. The server only
 accepts connections from that computer; other computers on the network cannot
-reach it. Your records are saved in a database file on that PC.
+reach it. Your records are saved in a database file on that computer.
 
-The Windows download includes its own Java runtime, so Java doesn't need to be
-installed. It requires Windows 10 or 11 (64-bit) and Microsoft's
-[Visual C++ Redistributable (x64)](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist),
-version 14.40 or newer, which many PCs already have. If it's missing or too old,
-the launcher says so and opens that Microsoft page.
+**You need Java 17 or newer installed** (for example the
+[Eclipse Temurin JRE](https://adoptium.net/)). Check with `java -version`. No
+Maven and no build step are needed.
 
-1. Read the [OfficeFlow end-user terms](TERMS.md). They allow personal use and
-   internal use by offices, schools and businesses. Then open
-   [Releases](https://github.com/devbyabir/officeflow/releases/latest) and
-   download `OfficeFlow-<version>-windows-x64.zip`. Downloading or using it
-   means you accept the terms. Each release lists the ZIP's SHA-256 checksum. To compare it in PowerShell, run
-   `Get-FileHash .\OfficeFlow-<version>-windows-x64.zip`.
-2. Extract the whole ZIP to a folder you keep, for example `Documents\OfficeFlow`.
-3. Double-click **OfficeFlow.exe**. The first time, it asks you to choose
-   the administrator password (12–120 characters, typing hidden).
-4. Your browser opens **http://127.0.0.1:8080**. Sign in as **`001`**.
+1. Read the [OfficeFlow end-user terms](TERMS.md). Then open
+   [Releases](https://github.com/devbyabir/officeflow/releases) and download
+   `OfficeFlow-<version>.zip`. Downloading or using it means you accept the
+   terms. Each release lists the ZIP's SHA-256 checksum; in PowerShell, compare it
+   with `Get-FileHash .\OfficeFlow-<version>.zip`.
+2. Extract the whole ZIP to a folder you keep, for example `Documents\OfficeFlow-1.0.0`,
+   and open a terminal in that folder (in File Explorer, right-click the folder
+   and choose **Open in Terminal**).
+3. First start only: choose the administrator password (12–120 characters;
+   typing is hidden):
 
-Keep the OfficeFlow window open while you use it. To stop OfficeFlow, press
-`Ctrl+C` in that window or close it. Your workspace is stored in
-`%LOCALAPPDATA%\OfficeFlow\officeflow.mv.db`, outside the extracted folder. To
-update, extract a newer ZIP to a new folder and start it there: it opens the same
-workspace. `Quick Start.txt` in the ZIP covers backups and common problems.
+   ```powershell
+   $env:OFFICEFLOW_ADMIN_PASSWORD = [Net.NetworkCredential]::new("", (Read-Host "New OfficeFlow admin password" -AsSecureString)).Password
+   ```
+
+4. Start OfficeFlow:
+
+   ```powershell
+   java -jar officeflow.jar
+   ```
+
+5. Open **http://127.0.0.1:8080** and sign in with account ID **`001`**.
+
+Keep the window open while you use OfficeFlow; press `Ctrl+C` in it to stop.
+On Windows the workspace is saved in
+`%LOCALAPPDATA%\OfficeFlow\officeflow.mv.db` (OfficeFlow prints the exact path at
+startup as `Database: ...`), outside the extracted folder, so a newer ZIP opens
+the same workspace. On macOS and Linux it is saved in the `data` folder of the
+folder you start OfficeFlow from. `Quick Start.txt` in the ZIP covers backups and
+common problems.
 
 ## Run from source
 
-The source checkout uses the same workspace location as the Windows download.
+The source checkout uses the same workspace location as the release ZIP.
 
 ### 1. Build once
 
@@ -322,19 +334,17 @@ It follows this README's PowerShell commands: first launch, the
 `%LOCALAPPDATA%\OfficeFlow` database, reopening, checking a backup on port 8081
 and restoring it.
 
-The **Windows release package** workflow builds the downloadable ZIP with
-`packaging/windows/build-zip.ps1`. It bundles a Java runtime made with `jlink`
-from the Eclipse Temurin JDK pinned in `packaging/runtime/temurin-21.json`, and
-verifies that download against Adoptium's published checksum.
-`packaging/runtime/build_source_archive.py` builds the matching
-`OfficeFlow-<version>-java-runtime-source.zip`, the runtime's complete
-corresponding source with its provenance. Pushes to `windows-release` attach
-both archives to a draft GitHub Release, which is never published automatically.
-`tests/windows_release_smoke.ps1` tests the ZIP itself, with system Java and
-Maven removed from `PATH`: extracting it into a folder with spaces, running the
-native `OfficeFlow.exe` launcher (built from `packaging/windows/launcher` in Go),
-first-run setup, a restart, and replacement copies opening the same workspace. The workflow uploads the ZIP
-and its SHA-256 file as a build artifact.
+The **Release ZIP** workflow builds `OfficeFlow-<version>.zip` with
+`packaging/jar/build_zip.py` (the runnable JAR, its web files, a Quick Start and
+the licence files), tests it on Windows with an installed Java 17 using
+`tests/windows_jar_zip_test.ps1` (first start, a clean Ctrl+C stop, a restart from
+another folder and a replacement copy), and on pushes to `windows-release` puts
+it on a draft GitHub Release, which is never published automatically.
+
+A Windows package with a bundled Java runtime and a native `OfficeFlow.exe`
+launcher is set aside for a later release. Its scripts stay in
+`packaging/windows`, `packaging/runtime` and `tests/`, and its workflow
+(**Windows bundled package**) runs only when started by hand.
 
 ## Publish the sample workspace
 

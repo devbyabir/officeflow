@@ -1,5 +1,8 @@
-name: Windows release package
-on: [push, pull_request, workflow_dispatch]
+# Set aside for a later release: the Windows package with a bundled Java runtime and the
+# native OfficeFlow.exe launcher. It runs only when started by hand and never changes the
+# GitHub release; the release uses .github/workflows/release-zip.yml.
+name: Windows bundled package (set aside)
+on: [workflow_dispatch]
 permissions:
   contents: read
 jobs:
@@ -79,40 +82,3 @@ jobs:
             dist/*.zip.sha256
             dist/*-PROVENANCE.md
           if-no-files-found: error
-
-  # Attaches both archives to a draft release. It never publishes, and it refuses to change a
-  # release that is already published.
-  draft-release:
-    needs: [package, runtime-source]
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/windows-release') || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v5
-        with:
-          path: release
-          merge-multiple: true
-      - name: Verify checksums and write release notes
-        shell: bash
-        run: |
-          version=$(python3 -c "import re; print(re.search(r'<artifactId>officeflow</artifactId>\s*<version>([^<]+)</version>', open('server/pom.xml').read()).group(1))")
-          echo "VERSION=$version" >> "$GITHUB_ENV"
-          # A versioned copy of the end-user terms, readable on the release page before downloading.
-          cp TERMS.md "release/OfficeFlow-$version-TERMS.md"
-          cd release
-          sha256sum -c *.zip.sha256
-          sha256sum *.zip > SHA256SUMS.txt
-          {
-            cat "../docs/releases/v$version.md"
-            printf '\n## Checksums (SHA-256)\n\n```text\n'
-            cat SHA256SUMS.txt
-            printf '```\n\n'
-            sed 's/^# /## /' OfficeFlow-*-PROVENANCE.md
-          } > ../release-notes.md
-          echo "::notice title=Release checksums::$(tr '\n' ' ' < SHA256SUMS.txt)"
-      - name: Create or update the draft release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 packaging/release/update_draft_release.py "v$VERSION" release-notes.md release/*

@@ -1,0 +1,78 @@
+name: Release ZIP
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - name: Build the runnable JAR
+        run: mvn -B -f server/pom.xml package
+      - name: Build OfficeFlow-<version>.zip
+        run: python3 packaging/jar/build_zip.py dist
+      - uses: actions/upload-artifact@v5
+        with:
+          name: officeflow-release-zip
+          path: |
+            dist/*.zip
+            dist/*.zip.sha256
+          if-no-files-found: error
+
+  # The ZIP on Windows with an installed Java (the oldest supported version, 17).
+  windows-test:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/download-artifact@v5
+        with:
+          name: officeflow-release-zip
+          path: dist
+      - name: Run the ZIP with installed Java (first start, Ctrl+C, restart, replacement copy)
+        shell: pwsh
+        run: ./tests/windows_jar_zip_test.ps1 -Zip (Get-ChildItem dist/*.zip).FullName
+
+  # Replaces the draft release's files with this ZIP. It never publishes, and it refuses to
+  # change a release that is already published.
+  draft-release:
+    needs: [build, windows-test]
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/windows-release') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v5
+        with:
+          name: officeflow-release-zip
+          path: release
+      - name: Verify checksums and write release notes
+        shell: bash
+        run: |
+          version=$(python3 -c "import re; print(re.search(r'<artifactId>officeflow</artifactId>\s*<version>([^<]+)</version>', open('server/pom.xml').read()).group(1))")
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          cp TERMS.md "release/OfficeFlow-$version-TERMS.md"
+          cd release
+          sha256sum -c *.zip.sha256
+          sha256sum *.zip > SHA256SUMS.txt
+          {
+            cat "../docs/releases/v$version.md"
+            printf '\n## Checksum (SHA-256)\n\n```text\n'
+            cat SHA256SUMS.txt
+            printf '```\n'
+          } > ../release-notes.md
+          echo "::notice title=Release checksum::$(tr '\n' ' ' < SHA256SUMS.txt)"
+      - name: Replace the draft release's files
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 packaging/release/update_draft_release.py --replace-all "v$VERSION" release-notes.md release/*

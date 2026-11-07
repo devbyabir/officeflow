@@ -1,0 +1,91 @@
+OfficeFlow - Quick Start
+========================
+
+OfficeFlow keeps an office's supply inventory and requisitions on one shared
+computer. The administrator and teachers use the same computer and browser,
+signing in and out in turn. Other computers cannot connect to it.
+
+
+Requirements
+------------
+- Java 17 or newer, installed on this computer. For example, install the
+  Eclipse Temurin JRE from https://adoptium.net/ . To check, open PowerShell
+  and run:  java -version
+- A web browser.
+
+Nothing else is needed: no Maven and no build step.
+
+
+1. Start OfficeFlow (Windows)
+-----------------------------
+1. Extract the whole ZIP to a folder you keep, for example
+   Documents\OfficeFlow-1.0.0.
+2. Open PowerShell in that folder: in File Explorer, right-click the folder
+   and choose "Open in Terminal".
+3. First start only: choose an administrator password (12-120 characters).
+   Typing is hidden:
+
+     $env:OFFICEFLOW_ADMIN_PASSWORD = [Net.NetworkCredential]::new("", (Read-Host "New OfficeFlow admin password" -AsSecureString)).Password
+
+4. Start OfficeFlow:
+
+     java -jar officeflow.jar
+
+5. Open http://127.0.0.1:8080 in your browser. Sign in with account ID 001
+   and your password.
+
+Keep the window open while you use OfficeFlow. Later starts need only step 2
+and step 4; the password is not asked again.
+
+On macOS or Linux, run the same command in a terminal in the extracted folder.
+
+
+2. Stop OfficeFlow
+------------------
+Click the window running OfficeFlow and press Ctrl+C. Your records are saved.
+
+
+3. Where your data is
+---------------------
+On Windows, your workspace is one file:
+
+    %LOCALAPPDATA%\OfficeFlow\officeflow.mv.db
+
+officeflow.log in the same folder records when OfficeFlow starts and stops.
+The data is not inside the extracted folder, so replacing the folder keeps it.
+OfficeFlow prints the exact database path when it starts ("Database: ...").
+On macOS and Linux, the data is in the "data" folder of the folder you start
+OfficeFlow from.
+
+
+4. Teachers
+-----------
+Add teachers under Teachers. OfficeFlow shows each new teacher's temporary
+password once; give it to them privately. At first sign-in they choose their
+own password. Forgotten password: Account > Reset teacher password.
+Always sign out before leaving the shared computer.
+
+
+5. Back up and update
+---------------------
+Back up: stop OfficeFlow, then copy officeflow.mv.db to a USB drive or another
+safe place. Restore: stop OfficeFlow, rename the current file and copy your
+backup into its place as officeflow.mv.db.
+Update: stop OfficeFlow, extract the new ZIP to a new folder and start it from
+there. It opens the same workspace.
+
+
+If something goes wrong
+-----------------------
+- "java is not recognized": Java is not installed or the terminal was opened
+  before installing it. Install Java 17 or newer, then open a new terminal.
+- "UnsupportedClassVersionError": the installed Java is older than 17.
+- "Port 8080 is already in use": OfficeFlow may already be running in another
+  window. Use that window.
+- "This starts a new OfficeFlow workspace ... Set an administrator password":
+  do step 3 above in the same window, then start OfficeFlow again.
+- The browser says it cannot reach OfficeFlow: the window running OfficeFlow
+  was closed. Start OfficeFlow again and press Retry in the browser.
+
+Terms of use: TERMS.txt. Licences: LICENSE.txt and THIRD-PARTY-NOTICES.txt.
+More help: https://github.com/devbyabir/officeflow
