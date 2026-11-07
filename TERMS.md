@@ -16,8 +16,8 @@ the OfficeFlow material.
 
 ## 2. What these terms cover
 
-These terms grant permission for the official OfficeFlow Windows package
-(OfficeFlow-<version>-windows-x64.zip) published on the OfficeFlow release page,
+These terms grant permission for the official OfficeFlow release package
+(OfficeFlow-<version>.zip) published on the OfficeFlow release page,
 https://github.com/devbyabir/officeflow/releases. They do not cover the
 OfficeFlow source code repository, which is governed by its own LICENSE file.
 
@@ -57,20 +57,14 @@ You are responsible for backing them up.
 
 ## 6. Third-party components
 
-The package also contains third-party components, including a Java runtime
-(GNU General Public License version 2 with the Classpath Exception), Gson
-(Apache License 2.0) and the H2 Database Engine (Mozilla Public License 2.0).
-Each component is provided under its own licence, listed in
-THIRD-PARTY-NOTICES.txt and in the licenses and runtime\legal folders of the
-package. These terms do not limit, and are not intended to limit, any right
-you have under those licences.
+The package also contains third-party components, including Gson (Apache
+License 2.0) and the H2 Database Engine (Mozilla Public License 2.0). Each
+component is provided under its own licence, listed in THIRD-PARTY-NOTICES.txt
+and in the licenses folder of the package. These terms do not limit, and are
+not intended to limit, any right you have under those licences.
 
-The complete corresponding source code for the bundled Java runtime is
-published beside the Windows package on the same release page, as
-OfficeFlow-<version>-java-runtime-source.zip.
-
-The Microsoft Visual C++ Redistributable is not part of the package. It is a
-separate prerequisite that you obtain from Microsoft under Microsoft's terms.
+OfficeFlow runs on the Java runtime installed on your computer, which is not
+part of the package and is provided under its own licence.
 
 ## 7. No warranty
 
