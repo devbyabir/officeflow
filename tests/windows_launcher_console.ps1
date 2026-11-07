@@ -148,10 +148,11 @@ try {
   if ($launcher.WaitForExit(30000)) {
     $line = Assert-CleanStop $launcher $java.ProcessId $before "closing the window"
     Notice "VERIFIED closing the window ($closed): OfficeFlow.exe exited (code $($launcher.ExitCode)), java.exe exited, port 8080 released; log: $line"
-  } elseif ($closed -match 'stillOpen=True') {
-    # The close request did not close this runner's console window, so the launcher never got
-    # the close event. Not a launcher result: stop with Ctrl+C and record it as unverified.
-    Notice "NOT VERIFIED closing the window: on this runner the console window did not close when asked ($closed), so OfficeFlow.exe never received the close event. Needs the manual check."
+  } elseif ($closed -match 'stillOpen=True' -or $closed -match 'class=PseudoConsoleWindow') {
+    # Either the window did not close, or this runner's console is a pseudo-console whose
+    # stand-in window can be destroyed without ending the console session. In both cases the
+    # launcher never got a close event: stop with Ctrl+C and record it as unverified.
+    Notice "NOT VERIFIED closing the window: this runner's console cannot be closed like a desktop window ($closed), so OfficeFlow.exe never received the close event. Needs the manual check on Windows 11."
     Invoke-Console "ctrlc" $launcher.Id | Out-Null
     Assert-CleanStop $launcher $java.ProcessId $before "Ctrl+C after the unclosed window" | Out-Null
   } else {
