@@ -10,16 +10,22 @@ own licence.
 
 Java runtime (folder "runtime")
 -------------------------------
-A Java runtime created with jlink from Eclipse Temurin (an OpenJDK build by the
-Eclipse Adoptium project), version recorded in runtime\release.
+A Java runtime created with jlink from the Eclipse Adoptium Temurin JDK
+21.0.13+9-LTS for Windows x64 (OpenJDK21U-jdk_x64_windows_hotspot_21.0.13_9.zip,
+SHA-256 a4dbaa05fca4bd89d84584e58c459bd732efebb1722af80ab13c6516832004f9),
+built from https://github.com/adoptium/jdk21u commit
+2ab10ca20c191701c3a9f3153bfc6e93d63714c1 (tag jdk-21.0.13+9_adopt).
 
 Licence: GNU General Public License, version 2, with the Classpath Exception.
 The full licence texts, the Classpath Exception and the notices for components
 included in OpenJDK are in runtime\legal (one folder per module, for example
 runtime\legal\java.base\LICENSE and runtime\legal\java.base\ASSEMBLY_EXCEPTION).
 
-Source code: https://github.com/adoptium/jdk21u (the tag matching the version
-in runtime\release) and https://adoptium.net/.
+Source code: the complete corresponding source for this runtime is published
+beside this ZIP, on the same release page, as
+OfficeFlow-<version>-java-runtime-source.zip. It contains Adoptium's source
+tarball for this build, the Temurin build scripts, the build configuration and
+OfficeFlow's jlink script, with a PROVENANCE.md describing how it was verified.
 
 
 Gson 2.11.0 (inside app\officeflow.jar)

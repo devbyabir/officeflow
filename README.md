@@ -319,7 +319,12 @@ and restoring it.
 
 The **Windows release package** workflow builds the downloadable ZIP with
 `packaging/windows/build-zip.ps1`. It bundles a Java runtime made with `jlink`
-from Eclipse Temurin 21. `tests/windows_release_smoke.ps1` then tests the ZIP
+from the Eclipse Temurin JDK pinned in `packaging/runtime/temurin-21.json`, and
+verifies that download against Adoptium's published checksum.
+`packaging/runtime/build_source_archive.py` builds the matching
+`OfficeFlow-<version>-java-runtime-source.zip`, the runtime's complete
+corresponding source with its provenance. Pushes to `windows-release` attach
+both archives to a draft GitHub Release, which is never published automatically. `tests/windows_release_smoke.ps1` then tests the ZIP
 itself, with system Java and Maven removed from `PATH`: extracting it into a
 folder with spaces, launching `Start OfficeFlow.cmd`, first-run setup, a restart,
 and a replacement copy opening the same workspace. The workflow uploads the ZIP
