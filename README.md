@@ -8,7 +8,7 @@ An inventory and requisition workspace for one office, rebuilt from my
 third-semester Java final project at Zhengzhou University.
 
 [![Live Demo](https://img.shields.io/badge/Live_Demo-sample_data-3B5BDB?style=for-the-badge&logo=githubpages&logoColor=white)](https://devbyabir.github.io/officeflow/)
-[![Download for Windows](https://img.shields.io/badge/Download_for_Windows-x64_installer-1F7A4D?style=for-the-badge&logo=github&logoColor=white)](https://github.com/devbyabir/officeflow/releases/latest)
+[![Download for Windows: coming soon](https://img.shields.io/badge/Download_for_Windows-coming_soon-6C757D?style=for-the-badge&logo=github&logoColor=white)](#install-on-windows)
 
 [![Application checks](https://github.com/devbyabir/officeflow/actions/workflows/checks.yml/badge.svg)](https://github.com/devbyabir/officeflow/actions/workflows/checks.yml)
 
@@ -36,6 +36,11 @@ OfficeFlow runs on **one shared computer**. The administrator and teachers use
 the same computer and browser, signing in and out in turn. The server only
 accepts connections from that computer; other computers on the network cannot
 reach it. Your records are saved in a database file on that computer.
+
+**Coming soon.** The Windows installer will be on the Releases page once the
+signed, tested release is public. Until then, try the
+[Live Demo](https://devbyabir.github.io/officeflow/) with sample data, or run
+OfficeFlow from source (below).
 
 The installer includes its own Java runtime, so nothing else needs to be
 installed first. It needs Windows 10 or 11 (x64).

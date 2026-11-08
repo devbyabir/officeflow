@@ -1,6 +1,6 @@
 # OfficeFlow End-User Terms
 
-Version 1.0, for the OfficeFlow 1.0.0 Windows package
+Version 1.0, for the OfficeFlow 1.0.0 Windows installer
 
 These terms are between you and devbyabir, the owner of OfficeFlow. They
 explain what you may do with the official OfficeFlow Windows package. By
@@ -16,10 +16,11 @@ the OfficeFlow material.
 
 ## 2. What these terms cover
 
-These terms grant permission for the official OfficeFlow release package
-(OfficeFlow-<version>.zip) published on the OfficeFlow release page,
-https://github.com/devbyabir/officeflow/releases. They do not cover the
-OfficeFlow source code repository, which is governed by its own LICENSE file.
+These terms grant permission for the official OfficeFlow Windows installer
+(OfficeFlow-Setup-<version>-x64.exe) published on the OfficeFlow release page,
+https://github.com/devbyabir/officeflow/releases, and for the program it
+installs (together, the "package"). They do not cover the OfficeFlow source
+code repository, which is governed by its own LICENSE file.
 
 ## 3. What you may do
 
@@ -58,13 +59,23 @@ You are responsible for backing them up.
 ## 6. Third-party components
 
 The package also contains third-party components, including Gson (Apache
-License 2.0) and the H2 Database Engine (Mozilla Public License 2.0). Each
-component is provided under its own licence, listed in THIRD-PARTY-NOTICES.txt
-and in the licenses folder of the package. These terms do not limit, and are
-not intended to limit, any right you have under those licences.
+License 2.0), the H2 Database Engine (Mozilla Public License 2.0) and a Java
+runtime built from Eclipse Temurin (GNU General Public License, version 2,
+with the Classpath Exception). Each component is provided under its own
+licence, listed in THIRD-PARTY-NOTICES.txt and in the licenses folder of the
+installed program, and the Java runtime's notices are in its runtime\legal
+folder. These terms do not limit, and are not intended to limit, any right you
+have under those licences.
 
-OfficeFlow runs on the Java runtime installed on your computer, which is not
-part of the package and is provided under its own licence.
+The complete corresponding source code of the included Java runtime is
+published on the OfficeFlow release page beside each installer
+(OfficeFlow-<version>-java-runtime-source.zip).
+
+OfficeFlow needs the Microsoft Visual C++ Redistributable (x64), which is not
+part of the package. If it is missing, the installer offers to download
+Microsoft's official installer from Microsoft and run it, only if you agree.
+That software is provided by Microsoft under Microsoft's own licence terms,
+not under these terms.
 
 ## 7. No warranty
 

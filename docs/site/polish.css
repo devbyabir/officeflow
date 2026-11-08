@@ -386,7 +386,7 @@ html:has(meta[name="officeflow-mode"][content="java"]):not([data-java-ready])
   user-select: all;
 }
 .demo-banner #download-officeflow {
-  color: var(--primary);
+  color: var(--muted);
   font-weight: 600;
   white-space: nowrap;
 }

@@ -63,11 +63,12 @@ class BrowserTests(unittest.TestCase):
         finally:
             self.context.close()
 
-    def test_sample_workspace_label_and_download_link(self):
+    def test_sample_workspace_label_and_download_coming_soon(self):
         expect(self.page.locator("#mode-badge")).to_have_text("Sample workspace")
-        link = self.page.get_by_role("link", name="Download OfficeFlow", exact=True)
-        expect(link).to_be_visible()
-        expect(link).to_have_attribute("href", "https://github.com/devbyabir/officeflow/releases")
+        notice = self.page.locator("#download-officeflow")
+        expect(notice).to_have_text("Windows download coming soon")
+        expect(notice).to_be_visible()
+        expect(self.page.get_by_role("link", name="Download OfficeFlow")).to_have_count(0)
 
     def test_theme_toggle_persists_and_updates_accessible_label(self):
         page = self.page
