@@ -12,12 +12,15 @@ differs, the commit's own archive is included as well.
 from pathlib import Path
 import datetime
 import hashlib
+import http.client
 import io
 import json
 import re
 import shutil
 import sys
 import tarfile
+import time
+import urllib.error
 import urllib.request
 import zipfile
 
@@ -25,11 +28,35 @@ ROOT = Path(__file__).resolve().parents[2]
 PIN = json.loads((ROOT / "packaging/runtime/temurin-21.json").read_text(encoding="utf-8"))
 
 
+TEMPORARY_HTTP_ERRORS = {408, 429, 500, 502, 503, 504}
+DOWNLOAD_ATTEMPTS = 5
+
+
 def download(url, target):
-    request = urllib.request.Request(url, headers={"User-Agent": "officeflow-release-build"})
-    with urllib.request.urlopen(request, timeout=300) as response, open(target, "wb") as out:
-        shutil.copyfileobj(response, out)
-    return target
+    """Downloads url to target, retrying temporary server and network errors with backoff.
+    Integrity is still checked by the callers (checksums and the source comparison)."""
+    name = Path(target).name
+    partial = Path(f"{target}.part")
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        print(f"Downloading {name} (attempt {attempt}/{DOWNLOAD_ATTEMPTS})", flush=True)
+        try:
+            request = urllib.request.Request(url, headers={"User-Agent": "officeflow-release-build"})
+            with urllib.request.urlopen(request, timeout=300) as response, open(partial, "wb") as out:
+                shutil.copyfileobj(response, out)
+            partial.replace(target)
+            print(f"Downloaded {name} ({Path(target).stat().st_size:,} bytes)", flush=True)
+            return target
+        except Exception as error:  # noqa: BLE001 - classified below
+            temporary = (error.code in TEMPORARY_HTTP_ERRORS if isinstance(error, urllib.error.HTTPError)
+                         else isinstance(error, (urllib.error.URLError, TimeoutError, ConnectionError,
+                                                 http.client.IncompleteRead)))
+            partial.unlink(missing_ok=True)
+            if not temporary or attempt == DOWNLOAD_ATTEMPTS:
+                print(f"::error title=Download failed::{name} from {url}: {error}", flush=True)
+                raise
+            wait = 10 * 2 ** (attempt - 1)
+            print(f"::warning title=Download retry::{name}: {error}; retrying in {wait} s", flush=True)
+            time.sleep(wait)
 
 
 def sha256(path):
