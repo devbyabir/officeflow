@@ -36,7 +36,8 @@ function Get-Supplies { @((Invoke-Api "/api/state" -Token (Login)).supplies | Fo
 function Get-CleanStops { if (Test-Path $log) { @(Get-Content $log | Where-Object { $_ -match 'stopped cleanly; database closed' }).Count } else { 0 } }
 function Get-Lines([string]$Name) { $file = Join-Path $output $Name; @(if (Test-Path $file) { Get-Content $file }) }
 function Wait-Lines([string]$Name, [int]$Count) {
-  for ($i = 0; $i -lt 120; $i++) { $lines = Get-Lines $Name; if ($lines.Count -ge $Count) { return $lines[-1] }; Start-Sleep -Milliseconds 250 }
+  # @() keeps a single line as a one-item array, so [-1] is the last line, not its last character.
+  for ($i = 0; $i -lt 120; $i++) { $lines = @(Get-Lines $Name); if ($lines.Count -ge $Count) { return $lines[-1] }; Start-Sleep -Milliseconds 250 }
   throw "OfficeFlow.exe wrote no line $Count to $Name"
 }
 function Get-Tree([int]$Parent) {
