@@ -459,8 +459,10 @@ def browser_setup(temp):
         call("/api/password/change", {"currentPassword": temporary_password(created, "T010"),
                                       "newPassword": "robin chooses this"}, teacher)
         teacher = call("/api/login", {"id": "T010", "password": "robin chooses this"})["token"]
-        for taken in ("Office.Admin", "t010", "001", "x", "9lives"):
+        for taken in ("Office.Admin", "001", "x", "9lives"):
             call("/api/username", {"username": taken}, teacher, expected=400)
+        # Another account's ID cannot become a username (an account may reuse its own ID).
+        call("/api/username", {"username": "t010"}, admin, expected=400)
         saved = call("/api/username", {"username": "Robin_Lee"}, teacher)
         assert saved["actor"]["username"] == "robin_lee", saved
         call("/api/login", {"username": "robin_lee", "password": "robin chooses this"})
