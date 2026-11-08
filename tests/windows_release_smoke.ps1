@@ -154,7 +154,7 @@ try {
   Assert ($opened -match '^http://127\.0\.0\.1:8080/#setup=([A-Za-z0-9_-]{32,128})$') "the first run opens the setup screen ($opened)"
   $setupToken = $Matches[1]
   Assert ((Invoke-Api "/api/setup").status -eq "ready") "setup is waiting for the administrator password"
-  Invoke-Api "/api/setup" @{ token = $setupToken; password = $adminPassword; confirmPassword = $adminPassword } | Out-Null
+  Invoke-Api "/api/setup" @{ token = $setupToken; username = "release.admin"; password = $adminPassword; confirmPassword = $adminPassword } | Out-Null
   Assert ((Invoke-Api "/api/setup").status -eq "done") "setup closes after the first administrator"
   Assert (Test-Path -LiteralPath $database) "the workspace is created at $database"
   Assert (-not (Test-Path -LiteralPath (Join-Path $folder "data"))) "nothing is stored in the extracted folder"

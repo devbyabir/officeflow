@@ -55,9 +55,10 @@ installed first. It needs Windows 10 or 11 (x64).
    from Microsoft; Windows then asks for administrator permission.
 3. Open **OfficeFlow** from the Start menu. It starts in the background (no
    window) and opens **http://127.0.0.1:8080** in your browser. On the first
-   start, the **Set up OfficeFlow** screen asks for the administrator password
-   (12–120 characters). That screen works only on this computer, for 15 minutes,
-   and only once. Then sign in with account ID **`001`**.
+   start, the **Create account** screen asks for a username and a password for
+   the administrator. That screen works only on this computer, for 15 minutes,
+   and only once; afterwards you are logged in. Next time, **Log in** with that
+   username and password.
 
 To stop OfficeFlow, use **Quit OfficeFlow** in the sidebar (or on the sign-in
 screen), or the **Quit OfficeFlow** Start menu shortcut. Closing the browser tab
@@ -90,7 +91,7 @@ It finds them from any working directory as long as the JAR stays in
 
 ### 2. First start: create your workspace
 
-Choose an administrator password of 12–120 characters. `Read-Host` keeps it out
+Choose an administrator password of 15–120 characters. `Read-Host` keeps it out
 of your PowerShell history:
 
 ```powershell
@@ -105,8 +106,8 @@ OfficeFlow: http://127.0.0.1:8080
 Database: C:\Users\you\AppData\Local\OfficeFlow\officeflow.mv.db
 ```
 
-Open **http://127.0.0.1:8080** and sign in with account ID **`001`** and your new
-password. The workspace starts empty. When you close this PowerShell window, the
+Open **http://127.0.0.1:8080** and log in with account ID **`001`** and your new
+password. Under **Account** you can then choose a username to log in with. The workspace starts empty. When you close this PowerShell window, the
 password variable disappears with it; it is only needed the first time.
 
 ### 3. Every later start
@@ -121,16 +122,30 @@ window and press `Ctrl+C`.** This closes the database cleanly.
 If the browser shows **"OfficeFlow can't reach its server"**, the window was
 closed or stopped. Start OfficeFlow again and press **Retry**.
 
+### Usernames, passwords and logging in
+
+- **Log in** takes a username and a password. Usernames are 3–32 characters,
+  start with a letter, are unique and are not case-sensitive.
+- Accounts from before usernames keep logging in with their account ID (the
+  first administrator is `001`), and keep their passwords. After logging in,
+  OfficeFlow offers to add a username; the ID keeps working.
+- New passwords are passphrases of 15–120 characters, with no rules about digits
+  or symbols. Passwords set earlier under the 12-character rule stay valid.
+- **Forgot your login?** on the Log in screen lists general reminders only.
+  OfficeFlow has no password hints and no self-service reset: an administrator
+  can set a temporary password for a teacher.
+
 ### Teachers and passwords
 
 - Add teachers under **Teachers** (one at a time or by CSV import). OfficeFlow
   creates a random temporary password for each new teacher and shows it **once**.
   Give it to the teacher privately.
-- At their first sign-in, a teacher must choose their own password (12–120
+- At their first login, a teacher must choose their own password (15–120
   characters) before they can see or change anything.
 - If a teacher forgets their password, open **Account → Reset teacher password**.
   The password you set is temporary in the same way.
-- Everyone can change their own password under **Account**. Always **sign out**
+- Everyone can choose a username and change their own password under **Account**.
+  Always **log out**
   before leaving the shared PC.
 
 ### Find the database

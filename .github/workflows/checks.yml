@@ -18,6 +18,17 @@ jobs:
         run: npm test
       - name: Build Java application
         run: mvn -B -f server/pom.xml package dependency:copy-dependencies
+      # The release before usernames (pinned), so the HTTP tests can create a workspace with it
+      # and upgrade a copy of that workspace with this build.
+      - name: Build the previous release for the upgrade test
+        shell: bash
+        run: |
+          previous=85dbe36a289cea15a5a8e2faf649ad5eb677f88f
+          git fetch --no-tags --depth 1 origin "$previous"
+          git worktree add --detach "$RUNNER_TEMP/previous-release" FETCH_HEAD
+          mvn -B -q -f "$RUNNER_TEMP/previous-release/server/pom.xml" package -DskipTests
+          echo "OFFICEFLOW_LEGACY_JAR=$RUNNER_TEMP/previous-release/server/target/officeflow-1.0.0.jar" >> "$GITHUB_ENV"
+          echo "::notice title=Previous release for the upgrade test::$(git -C "$RUNNER_TEMP/previous-release" log -1 --format='%h %s')"
       - name: Java service tests
         shell: bash
         run: |

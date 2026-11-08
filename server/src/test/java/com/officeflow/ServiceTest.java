@@ -314,18 +314,45 @@ public final class ServiceTest {
       Service service = new Service(store);
       check(service.setupRequired());
       denied(() -> service.login("001", ADMIN_PASSWORD));
-      denied(() -> service.createFirstAdministrator("too short"));
+      denied(() -> service.createFirstAdministrator("office", "too short"));
+      denied(() -> service.createFirstAdministrator("office", "fourteen chars")); // 14
+      denied(() -> service.createFirstAdministrator("1office", ADMIN_PASSWORD));
+      denied(() -> service.createFirstAdministrator("of", ADMIN_PASSWORD));
       check(service.setupRequired());
-      service.createFirstAdministrator(ADMIN_PASSWORD);
+      // 15 characters, digits only: passphrases have no composition rules.
+      service.createFirstAdministrator("Office.Admin", "123456789012345");
       check(!service.setupRequired());
-      denied(() -> service.createFirstAdministrator("another-admin-password"));
-      service.login("001", ADMIN_PASSWORD);
+      denied(() -> service.createFirstAdministrator("other", "another-admin-password"));
+      check("office.admin".equals(service.username("001")));
+      // The username (any case) and the account ID both sign in.
+      check(service.login("OFFICE.admin", "123456789012345").id().equals("001"));
+      check(service.login("001", "123456789012345").id().equals("001"));
+      denied(() -> service.login("office.admin", "wrong-password-123"));
+      Accounts.Account admin = service.login("001", "123456789012345");
+      service.execute(
+          admin,
+          "saveTeacher",
+          data("{\"id\":\"T7\",\"name\":\"Kai\",\"department\":\"Art\",\"email\":\"\"}"));
+      // Usernames are unique and never equal any account ID, and new IDs avoid usernames.
+      Accounts.Account teacher = new Accounts.Teacher("T7");
+      denied(() -> service.setUsername(teacher, "office.admin"));
+      denied(() -> service.setUsername(admin, "t7"));
+      check(service.setUsername(teacher, "Kai_Art").equals("kai_art"));
+      denied(
+          () ->
+              service.execute(
+                  admin,
+                  "saveTeacher",
+                  data(
+                      "{\"id\":\"KAI_ART\",\"name\":\"Dup\",\"department\":\"Art\","
+                          + "\"email\":\"\"}")));
     }
     // Reopening keeps the account; a password in the environment never replaces it.
     try (Store store = new Store(url, "ignored-for-existing-workspace", true)) {
       Service service = new Service(store);
       check(!service.setupRequired());
-      service.login("001", ADMIN_PASSWORD);
+      service.login("001", "123456789012345");
+      service.login("office.admin", "123456789012345");
       denied(() -> service.login("001", "ignored-for-existing-workspace"));
     }
 

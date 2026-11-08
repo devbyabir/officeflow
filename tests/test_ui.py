@@ -234,11 +234,12 @@ class JavaAccountBrowserTests(unittest.TestCase):
         expect(page.locator("#mode-badge")).to_contain_text("Java workspace")
 
     def sign_in(self, page, account, password):
+        """Logs in with a username or, for accounts from before usernames, an account ID."""
         dialog = page.get_by_role("dialog")
-        expect(dialog.get_by_role("heading", name="Welcome to OfficeFlow")).to_be_visible()
-        dialog.get_by_label("Account ID", exact=True).fill(account)
+        expect(dialog.get_by_role("heading", name="Log in")).to_be_visible()
+        dialog.get_by_label("Username", exact=True).fill(account)
         dialog.get_by_label("Password", exact=True).fill(password)
-        dialog.get_by_role("button", name="Sign in", exact=True).click()
+        dialog.get_by_role("button", name="Log in", exact=True).click()
 
     def account_action(self, page, name):
         page.locator("#switch-role").click()
@@ -278,7 +279,7 @@ class JavaAccountBrowserTests(unittest.TestCase):
         temporary = dialog.locator(".temporary-passwords code").inner_text()
         self.assertGreaterEqual(len(temporary), 12)
         dialog.get_by_role("button", name="Done", exact=True).click()
-        self.account_action(page, "Sign out")
+        self.account_action(page, "Log out")
         self.sign_in(page, "T050", temporary)
         expect(dialog.get_by_role("heading", name="Choose your own password")).to_be_visible()
         expect(page.locator("#main")).not_to_contain_text("Fixture pencils")
@@ -304,7 +305,7 @@ class JavaAccountBrowserTests(unittest.TestCase):
         page.get_by_label("Confirm new password", exact=True).fill("ui-reset-password")
         dialog.get_by_role("button", name="Reset password", exact=True).click()
         expect(dialog).not_to_be_visible()
-        self.account_action(page, "Sign out")
+        self.account_action(page, "Log out")
         expect(page.locator("#main")).not_to_contain_text("Alex Morgan")
         # A reset is temporary: the teacher must choose their own password before anything else.
         self.sign_in(page, "T001", "ui-reset-password")
@@ -320,10 +321,51 @@ class JavaAccountBrowserTests(unittest.TestCase):
         expect(dialog).not_to_be_visible()
         page.locator("#switch-role").click()
         expect(page.get_by_role("button", name="Reset teacher password", exact=True)).to_have_count(0)
-        page.get_by_role("button", name="Sign out", exact=True).click()
+        page.get_by_role("button", name="Log out", exact=True).click()
         page.reload()
-        expect(dialog.get_by_role("heading", name="Welcome to OfficeFlow")).to_be_visible()
+        expect(dialog.get_by_role("heading", name="Log in")).to_be_visible()
         self.assert_no_sample_workspace(page)
+
+    def test_forgot_login_shows_only_general_reminders(self):
+        page = self.new_page()
+        page.goto(self.base)
+        dialog = page.get_by_role("dialog")
+        expect(dialog.get_by_role("heading", name="Log in")).to_be_visible()
+        dialog.get_by_role("button", name="Forgot your login?").click()
+        expect(dialog.get_by_role("heading", name="Forgot your login?")).to_be_visible()
+        reminders = dialog.locator(".login-reminders")
+        expect(reminders).to_contain_text("001")
+        expect(reminders).to_contain_text("password manager")
+        # Nothing account-specific: no names, IDs of other accounts, or password hints.
+        for private in ("T001", "T002", "Alex", "Sam", "hint"):
+            expect(reminders).not_to_contain_text(private)
+        page.keyboard.press("Escape")
+        expect(dialog.get_by_role("heading", name="Forgot your login?")).to_be_visible()
+        dialog.get_by_role("button", name="Back to log in").click()
+        expect(dialog.get_by_role("heading", name="Log in")).to_be_visible()
+
+    def test_legacy_id_login_then_choose_a_username(self):
+        page = self.new_page()
+        page.goto(self.base)
+        dialog = page.get_by_role("dialog")
+        self.sign_in(page, "T002", "ui-teacher-password")
+        expect(dialog).not_to_be_visible()
+        prompt = page.locator(".username-prompt")
+        expect(prompt).to_contain_text("account ID T002")
+        prompt.get_by_role("button", name="Choose username").click()
+        dialog.get_by_label("Username", exact=True).fill("001")
+        dialog.get_by_role("button", name="Save username").click()
+        expect(dialog.locator(".form-error")).to_contain_text("username")
+        dialog.get_by_label("Username", exact=True).fill("Sam.Chen")
+        dialog.get_by_role("button", name="Save username").click()
+        expect(dialog).not_to_be_visible()
+        expect(page.locator(".username-prompt")).to_have_count(0)
+        self.account_action(page, "Log out")
+        self.sign_in(page, "sam.chen", "ui-teacher-password")
+        expect(dialog).not_to_be_visible()
+        expect(page.locator(".username-prompt")).to_have_count(0)
+        page.locator("#switch-role").click()
+        expect(dialog).to_contain_text("Logged in as sam.chen (account ID T002)")
 
     def test_revoked_session_clears_cached_view_on_next_request(self):
         page = self.new_page()
@@ -341,8 +383,8 @@ class JavaAccountBrowserTests(unittest.TestCase):
             data={"id": "T002", "newPassword": "revoked-teacher-password"})
         self.assertTrue(response.ok)
         page.locator("#switch-role").click()
-        page.get_by_role("button", name="Sign out", exact=True).click()
-        expect(dialog.get_by_role("heading", name="Welcome to OfficeFlow")).to_be_visible()
+        page.get_by_role("button", name="Log out", exact=True).click()
+        expect(dialog.get_by_role("heading", name="Log in")).to_be_visible()
         expect(page.locator("#main")).not_to_contain_text("Sam Chen")
         self.assertIsNone(page.evaluate("sessionStorage.getItem('officeflow-token')"))
 
@@ -390,6 +432,10 @@ class JavaFirstRunBrowserTests(unittest.TestCase):
         cls.stream.close()
         cls.temp.cleanup()
 
+    def account_action(self, page, name):
+        page.locator("#switch-role").click()
+        page.get_by_role("button", name=name, exact=True).click()
+
     def new_page(self, scheme="light"):
         context = self.browser.new_context(viewport={"width": 1440, "height": 900},
                                            color_scheme=scheme, reduced_motion="reduce")
@@ -406,32 +452,35 @@ class JavaFirstRunBrowserTests(unittest.TestCase):
         dialog = page.get_by_role("dialog")
         expect(dialog.get_by_role("heading", name="Set up OfficeFlow")).to_be_visible()
         expect(dialog.get_by_role("alert")).to_contain_text("opened without OfficeFlow's setup link")
-        expect(dialog.get_by_label("Admin password")).to_have_count(0)
+        expect(dialog.get_by_label("Password")).to_have_count(0)
         expect(dialog.get_by_role("button", name="Quit OfficeFlow")).to_be_visible()
 
     def test_2_setup_sign_in_add_item_and_quit(self):
         page = self.new_page("dark")
         page.goto(self.base + "/#setup=" + self.TOKEN)
         dialog = page.get_by_role("dialog")
-        expect(dialog.get_by_role("heading", name="Set up OfficeFlow")).to_be_visible()
+        expect(dialog.get_by_role("heading", name="Create account")).to_be_visible()
         # The token leaves the address bar at once and the screen cannot be dismissed.
         self.assertEqual(page.url, self.base + "/")
         page.keyboard.press("Escape")
-        expect(dialog.get_by_role("heading", name="Set up OfficeFlow")).to_be_visible()
+        expect(dialog.get_by_role("heading", name="Create account")).to_be_visible()
         expect(page.locator("#main")).to_be_hidden()
-        dialog.get_by_label("Admin password", exact=True).fill("ui-first-admin-pass")
-        dialog.get_by_label("Confirm password", exact=True).fill("ui-first-admin-typo")
-        dialog.get_by_role("button", name="Create administrator").click()
+        dialog.get_by_label("Username", exact=True).fill("Office.Admin")
+        dialog.get_by_label("Password", exact=True).fill("fourteen chars")
+        dialog.get_by_label("Confirm password", exact=True).fill("fourteen chars")
+        dialog.get_by_role("button", name="Create account").click()
+        expect(dialog.locator(".form-error")).to_contain_text("15")
+        dialog.get_by_label("Password", exact=True).fill("paper clips and coffee")
+        dialog.get_by_label("Confirm password", exact=True).fill("paper clips and tea")
+        dialog.get_by_role("button", name="Create account").click()
         expect(dialog.locator(".form-error")).to_contain_text("do not match")
-        dialog.get_by_label("Confirm password", exact=True).fill("ui-first-admin-pass")
-        dialog.get_by_role("button", name="Create administrator").click()
-        # Returning to sign-in with the administrator ID filled in.
-        expect(dialog.get_by_role("heading", name="Welcome to OfficeFlow")).to_be_visible()
-        expect(dialog.get_by_label("Account ID", exact=True)).to_have_value("001")
-        self.assertIsNone(page.evaluate("sessionStorage.getItem('officeflow-setup')"))
-        dialog.get_by_label("Password", exact=True).fill("ui-first-admin-pass")
-        dialog.get_by_role("button", name="Sign in", exact=True).click()
+        dialog.get_by_label("Confirm password", exact=True).fill("paper clips and coffee")
+        dialog.get_by_role("button", name="Create account").click()
+        # Signed in straight away, with the chosen username and no username prompt.
         expect(dialog).not_to_be_visible()
+        expect(page.locator("#toast")).to_contain_text("logged in as office.admin")
+        expect(page.locator(".username-prompt")).to_have_count(0)
+        self.assertIsNone(page.evaluate("sessionStorage.getItem('officeflow-setup')"))
         # A reload opens sign-in for a returning visitor, never setup again.
         status = page.context.request.get(self.base + "/api/setup").json()
         self.assertEqual(status, {"required": False, "status": "done"})
@@ -445,6 +494,15 @@ class JavaFirstRunBrowserTests(unittest.TestCase):
         expect(row.locator(".item-detail-link")).to_have_text("First-run markers")
         expect(row.locator(".qty-available")).to_have_text("4")
         expect(row.locator(".qty-onhand")).to_have_text("4")
+        # Returning visit: log out, then log in with the username.
+        self.account_action(page, "Log out")
+        expect(dialog.get_by_role("heading", name="Log in")).to_be_visible()
+        dialog.get_by_label("Username", exact=True).fill("office.admin")
+        dialog.get_by_label("Password", exact=True).fill("paper clips and coffee")
+        dialog.get_by_role("button", name="Log in", exact=True).click()
+        expect(dialog).not_to_be_visible()
+        page.locator("#navigation").get_by_role("link", name="Supply inventory").click()
+        expect(page.locator("#inventory-results")).to_contain_text("First-run markers")
         # Quit from the sidebar: the server stops cleanly and the page says so.
         page.get_by_role("button", name="Quit OfficeFlow").click()
         expect(dialog.get_by_role("heading", name="Quit OfficeFlow?")).to_be_visible()

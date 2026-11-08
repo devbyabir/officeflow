@@ -193,7 +193,7 @@ final class Startup {
   static String newWorkspaceMessage(Object location) {
     return "This starts a new OfficeFlow workspace at:\n  "
         + location
-        + "\nSet an administrator password of 12-120 characters first. In PowerShell:\n"
+        + "\nSet an administrator password of 15-120 characters first. In PowerShell:\n"
         + "  $env:OFFICEFLOW_ADMIN_PASSWORD = Read-Host \"New OfficeFlow admin password\"\n"
         + "Then start OfficeFlow again in the same window. The administrator account ID is 001.\n"
         + "Nothing was created.";

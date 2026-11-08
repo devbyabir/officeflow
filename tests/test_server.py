@@ -129,7 +129,10 @@ def workflow(temp):
     # A new workspace is not created without a valid administrator password.
     refused(temp, [database(db)], clean_env(), "OFFICEFLOW_ADMIN_PASSWORD", "Nothing was created")
     refused(temp, [database(db)], clean_env(OFFICEFLOW_ADMIN_PASSWORD="001"),
-            "12-120 characters")
+            "15-120 characters")
+    # 14 characters met the old 12-character rule; new passwords need 15.
+    refused(temp, [database(db)], clean_env(OFFICEFLOW_ADMIN_PASSWORD="fourteen chars"),
+            "15-120 characters")
     assert not db.parent.exists() or not any(db.parent.iterdir())
 
     server = start(temp, [database(db)], clean_env(OFFICEFLOW_ADMIN_PASSWORD=ADMIN_PASSWORD))
@@ -415,21 +418,58 @@ def browser_setup(temp):
             raise AssertionError("a foreign Host header reached setup")
         except urllib.error.HTTPError as error:
             assert error.code == 403, error.code
-        # A weak or mismatched password is rejected without using up the token.
-        call("/api/setup", {"token": token, "password": "short"}, expected=400)
-        call("/api/setup", {"token": token, "password": ADMIN_PASSWORD,
+        # A bad username or a weak or mismatched password is rejected without using the token.
+        account = {"token": token, "username": "Office.Admin"}
+        call("/api/setup", {**account, "password": "short"}, expected=400)
+        call("/api/setup", {**account, "password": "fourteen chars"}, expected=400)
+        call("/api/setup", {**account, "username": "1st", "password": ADMIN_PASSWORD}, expected=400)
+        call("/api/setup", {**account, "username": "", "password": ADMIN_PASSWORD}, expected=400)
+        call("/api/setup", {**account, "password": ADMIN_PASSWORD,
                             "confirmPassword": ADMIN_PASSWORD + "x"}, expected=400)
-        wrong = call("/api/setup", {"token": "x" * 43, "password": ADMIN_PASSWORD}, expected=403)
+        wrong = call("/api/setup", {**account, "token": "x" * 43, "password": ADMIN_PASSWORD},
+                     expected=403)
         assert wrong["code"] == "SETUP_TOKEN_INVALID", wrong
         assert call("/api/setup")["status"] == "ready"
-        done = call("/api/setup", {"token": token, "password": ADMIN_PASSWORD,
+        done = call("/api/setup", {**account, "password": ADMIN_PASSWORD,
                                    "confirmPassword": ADMIN_PASSWORD})
-        assert done["id"] == "001", done
+        # Signed in at once, as the administrator, with the chosen (lower-case) username.
+        assert done["actor"] == {"id": "001", "role": "admin", "mustChangePassword": False,
+                                 "username": "office.admin"}, done
+        assert call("/api/session", token=done["token"])["actor"]["username"] == "office.admin"
         assert call("/api/setup") == {"required": False, "status": "done"}
         # Setup is closed for good: the same token or a new password cannot replace the admin.
-        call("/api/setup", {"token": token, "password": "replacement-password"}, expected=409)
+        call("/api/setup", {**account, "password": "replacement-password"}, expected=409)
         call("/api/login", {"id": "001", "password": "replacement-password"}, expected=403)
+        # Log in with the username (any case) or the account ID; checked against the hash.
+        call("/api/login", {"username": "OFFICE.ADMIN", "password": ADMIN_PASSWORD})
+        call("/api/login", {"username": "001", "password": ADMIN_PASSWORD})
         call("/api/login", {"id": "001", "password": ADMIN_PASSWORD})
+        failed = call("/api/login", {"username": "office.admin", "password": "wrong-password-1"},
+                      expected=403)
+        assert failed["error"] == "Username or password is incorrect.", failed
+        assert call("/api/login", {"username": "nobody", "password": ADMIN_PASSWORD},
+                    expected=403)["error"] == failed["error"], "no hint whether a username exists"
+        # Usernames are unique, follow the rules, and never equal an account ID.
+        admin = call("/api/login", {"username": "office.admin", "password": ADMIN_PASSWORD})["token"]
+        created = call("/api/command", {"action": "saveTeacher", "data": {
+            "id": "T010", "name": "Robin Lee", "department": "Science", "email": ""}}, admin)
+        teacher = call("/api/login", {"id": "T010",
+                                      "password": temporary_password(created, "T010")})["token"]
+        call("/api/username", {"username": "robin"}, teacher, expected=403)  # must change first
+        call("/api/password/change", {"currentPassword": temporary_password(created, "T010"),
+                                      "newPassword": "robin chooses this"}, teacher)
+        teacher = call("/api/login", {"id": "T010", "password": "robin chooses this"})["token"]
+        for taken in ("Office.Admin", "t010", "001", "x", "9lives"):
+            call("/api/username", {"username": taken}, teacher, expected=400)
+        saved = call("/api/username", {"username": "Robin_Lee"}, teacher)
+        assert saved["actor"]["username"] == "robin_lee", saved
+        call("/api/login", {"username": "robin_lee", "password": "robin chooses this"})
+        call("/api/login", {"id": "T010", "password": "robin chooses this"})
+        # A new teacher ID may not equal an existing username (ignoring case).
+        clash = call("/api/command", {"action": "saveTeacher", "data": {
+            "id": "ROBIN_LEE", "name": "Dup", "department": "Art", "email": ""}}, admin,
+            expected=400)
+        assert "already used as a username" in clash["error"], clash
         # Quit needs a JSON POST from this computer; it stops cleanly with exit code 0.
         call("/api/quit", expected=400)
         assert call("/api/quit", {})["message"] == "OfficeFlow is stopping."
@@ -461,12 +501,99 @@ def browser_setup(temp):
         lines = [line for line in server.output().splitlines() if "/#setup=" in line]
         assert lines and "within 15 minutes" in lines[0], server.output()
         printed = lines[0].split("/#setup=", 1)[1].split()[0]
-        client(server.base)("/api/setup", {"token": printed, "password": ADMIN_PASSWORD})
-        client(server.base)("/api/login", {"id": "001", "password": ADMIN_PASSWORD})
+        client(server.base)("/api/setup", {"token": printed, "username": "manual",
+                                           "password": ADMIN_PASSWORD})
+        client(server.base)("/api/login", {"username": "manual", "password": ADMIN_PASSWORD})
     finally:
         server.stop()
-    print("Browser setup passed: one-time token, Host check, password policy before the token"
-          " is used, setup closed after the first admin, account kept on restart, clean quit.")
+    print("Browser setup passed: one-time token, Host check, username and passphrase rules"
+          " before the token is used, signed in after setup, login by username or account ID,"
+          " unique usernames, setup closed after the first admin, account kept on restart,"
+          " clean quit.")
+
+
+def legacy_upgrade(temp):
+    """A copy of a workspace made by the previous release opens unchanged in this one."""
+    legacy_jar = os.environ.get("OFFICEFLOW_LEGACY_JAR")
+    if not legacy_jar:
+        print("Skipped the legacy workspace upgrade: set OFFICEFLOW_LEGACY_JAR to the previous"
+              " release's JAR.")
+        return
+    original = Path(temp) / "legacy-original" / "officeflow"
+    # 13 characters: valid under the previous 12-character rule, too short for a new password.
+    old_admin, old_teacher = "legacy-pass13", "legacy-teach1"
+    # The previous release reads the web files of its own checkout (server/target/../../docs).
+    legacy_site = Path(legacy_jar).resolve().parents[2] / "docs" / "site"
+    command = [JAVA, "-Dofficeflow.port=0", database(original),
+               "-Dofficeflow.site=" + str(legacy_site), "-jar", legacy_jar]
+    handle, name = tempfile.mkstemp(dir=temp, suffix=".log")
+    os.close(handle)
+    log = Path(name)
+    with log.open("w", encoding="utf-8") as stream:
+        process = subprocess.Popen(command, stdout=stream, stderr=stream, cwd=ROOT,
+                                   env=clean_env(OFFICEFLOW_ADMIN_PASSWORD=old_admin))
+        try:
+            for _ in range(150):
+                if READY_LINE in log.read_text(encoding="utf-8") or process.poll() is not None:
+                    break
+                time.sleep(0.1)
+            text = log.read_text(encoding="utf-8")
+            assert READY_LINE in text, text
+            call = client(text.split("OfficeFlow: ", 1)[1].splitlines()[0])
+            admin = call("/api/login", {"id": "001", "password": old_admin})["token"]
+            created = call("/api/command", {"action": "saveTeacher", "data": {
+                "id": "T100", "name": "Legacy Teacher", "department": "Maths", "email": ""}}, admin)
+            first = call("/api/login", {"id": "T100", "password":
+                                        temporary_password(created, "T100")})["token"]
+            call("/api/password/change", {"currentPassword": temporary_password(created, "T100"),
+                                          "newPassword": old_teacher}, first)
+            call("/api/command", {"action": "saveSupply", "data": {
+                "name": "Legacy staplers", "category": "Desk essentials", "quantity": "7",
+                "threshold": "2", "unit": "pieces"}}, admin)
+            teacher = call("/api/login", {"id": "T100", "password": old_teacher})["token"]
+            supply = [s for s in call("/api/state", token=teacher)["supplies"]
+                      if s["name"] == "Legacy staplers"][0]
+            call("/api/command", {"action": "request", "data": {
+                "supplyId": supply["id"], "quantity": "2", "note": "legacy"}}, teacher)
+        finally:
+            process.terminate()
+            process.wait(timeout=20)
+    original_file = original.parent / "officeflow.mv.db"
+    before = original_file.read_bytes()
+
+    # Upgrade a copy, as installing over an existing workspace would, and open it here.
+    copy = Path(temp) / "legacy-copy" / "officeflow"
+    copy.parent.mkdir(parents=True)
+    shutil.copy2(original_file, copy.parent / "officeflow.mv.db")
+    server = start(temp, [database(copy), "-Dofficeflow.browserSetup=true"],
+                   clean_env(OFFICEFLOW_SETUP_TOKEN="L" * 43))
+    try:
+        call = client(server.base)
+        assert call("/api/setup") == {"required": False, "status": "done"}, "no setup again"
+        login = call("/api/login", {"username": "001", "password": old_admin})
+        assert login["actor"]["username"] is None, login
+        admin = login["token"]
+        state = call("/api/state", token=admin)
+        assert [s["quantity"] for s in state["supplies"] if s["name"] == "Legacy staplers"] == [7]
+        assert [r["status"] for r in state["requests"] if r["note"] == "legacy"] == ["Pending"]
+        assert [t["name"] for t in state["teachers"]] == ["Legacy Teacher"]
+        teacher = call("/api/login", {"id": "T100", "password": old_teacher})["token"]
+        # Choosing a username keeps the original password, and the ID keeps working.
+        call("/api/username", {"username": "legacy.admin"}, admin)
+        call("/api/login", {"username": "legacy.admin", "password": old_admin})
+        call("/api/login", {"id": "001", "password": old_admin})
+        call("/api/username", {"username": "legacy.teacher"}, teacher)
+        call("/api/login", {"username": "legacy.teacher", "password": old_teacher})
+        # The old 13-character passwords keep working; a new one must have 15.
+        call("/api/password/change", {"currentPassword": old_admin,
+                                      "newPassword": "short-again13"}, admin, expected=400)
+    finally:
+        server.stop()
+    assert original_file.read_bytes() == before, "the original workspace was not touched"
+    print("Legacy workspace upgrade passed: a copy of a workspace made by the previous release"
+          " opened without setup; its 13-character admin and teacher passwords still work by"
+          " account ID; its supply, teacher and pending request are intact; usernames can be"
+          " added; the original file is unchanged.")
 
 
 def main():
@@ -475,6 +602,7 @@ def main():
         seed_flag_and_backup(temp)
         startup_paths(temp)
         browser_setup(temp)
+        legacy_upgrade(temp)
     print("HTTP integration passed.")
 
 

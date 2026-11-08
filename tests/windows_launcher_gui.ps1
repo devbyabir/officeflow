@@ -31,7 +31,7 @@ function Invoke-Api([string]$Path, $Body = $null, [string]$Token = "", [int]$Exp
 }
 function Test-Ready { try { (Invoke-RestMethod "$base/api/health" -TimeoutSec 2).service -eq "officeflow" } catch { $false } }
 function Test-PortFree { -not (Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue) }
-function Login { (Invoke-Api "/api/login" @{ id = "001"; password = $password }).token }
+function Login { (Invoke-Api "/api/login" @{ username = "windowless.admin"; password = $password }).token }
 function Get-Supplies { @((Invoke-Api "/api/state" -Token (Login)).supplies | ForEach-Object { $_.name }) }
 function Get-CleanStops { if (Test-Path $log) { @(Get-Content $log | Where-Object { $_ -match 'stopped cleanly; database closed' }).Count } else { 0 } }
 function Get-Lines([string]$Name) { $file = Join-Path $output $Name; @(if (Test-Path $file) { Get-Content $file }) }
@@ -153,8 +153,8 @@ try {
   }
   Assert ((Invoke-Api "/api/setup").status -eq "ready") "setup waits for the administrator password"
   Invoke-Api "/api/login" @{ id = "001"; password = $password } -Expected 403 | Out-Null
-  Invoke-Api "/api/setup" @{ token = $token; password = $password; confirmPassword = $password } | Out-Null
-  Invoke-Api "/api/setup" @{ token = $token; password = "Another password 12" } -Expected 409 | Out-Null
+  Invoke-Api "/api/setup" @{ token = $token; username = "windowless.admin"; password = $password; confirmPassword = $password } | Out-Null
+  Invoke-Api "/api/setup" @{ token = $token; username = "someone.else"; password = "Another password 12" } -Expected 409 | Out-Null
   Invoke-Api "/api/command" @{ action = "saveSupply"; data = @{
       name = "Windowless check folders"; category = "Stationery"; quantity = "6"; threshold = "2"; unit = "packs" } } (Login) | Out-Null
   Notice "First start: $($start.Samples) samples (every ~50 ms from launch until the server listened, at least 5 s) showed no visible window from OfficeFlow.exe, java.exe or a console host; browser opened the setup screen; admin created once (a second setup was refused with 409); item saved; process tree: $($names -join ', ')"

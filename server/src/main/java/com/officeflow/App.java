@@ -109,7 +109,8 @@ public final class App {
     }
     String password = value(data, "password");
     if (password.length() > 200) throw new IllegalArgumentException("The password is too long.");
-    // Checked before the token is used up, so a mistyped password can simply be corrected.
+    // Checked before the token is used up, so a mistyped entry can simply be corrected.
+    String username = Accounts.normalizeUsername(value(data, "username"));
     Accounts.validatePassword(password);
     if (data.has("confirmPassword") && !password.equals(value(data, "confirmPassword")))
       throw new IllegalArgumentException("The passwords do not match.");
@@ -120,10 +121,13 @@ public final class App {
       json(exchange, 403, result);
       return;
     }
-    service.createFirstAdministrator(password);
+    service.createFirstAdministrator(username, password);
     setup = null;
-    JsonObject result = object("message", "OfficeFlow is ready. Sign in with ID 001.");
-    result.addProperty("id", "001");
+    // The new administrator is signed in at once.
+    Accounts.Account account = new Accounts.Administrator("001");
+    JsonObject result = object("token", newSession(account, false));
+    result.add("actor", actor(account, false));
+    result.addProperty("message", "Your account is ready.");
     json(exchange, 200, result);
   }
 
@@ -190,11 +194,15 @@ public final class App {
     }
     if (failedLogins >= 10)
       throw new SecurityException("Too many attempts. Try again in a minute.");
-    String id = value(data, "id"), password = value(data, "password");
-    if (id.length() > 30 || password.length() > 200)
+    // "username" from the Log in screen; "id" from older pages and scripts. Either field takes
+    // a username or an account ID such as 001.
+    String name = value(data, "username");
+    if (name.isEmpty()) name = value(data, "id");
+    String password = value(data, "password");
+    if (name.length() > 40 || password.length() > 200)
       throw new IllegalArgumentException("Credentials are too long.");
     try {
-      return service.login(id, password);
+      return service.login(name, password);
     } catch (SecurityException exception) {
       failedLogins++;
       throw exception;
@@ -237,12 +245,7 @@ public final class App {
       if (path.equals("/api/login")) {
         Accounts.Account account = signIn(body(exchange));
         boolean mustChange = service.passwordChangeRequired(account.id());
-        sessions.entrySet().removeIf(entry -> entry.getValue().expires().isBefore(Instant.now()));
-        byte[] bytes = new byte[32];
-        new SecureRandom().nextBytes(bytes);
-        String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-        sessions.put(token, new Session(account, Instant.now().plusSeconds(28800), mustChange));
-        JsonObject result = object("token", token);
+        JsonObject result = object("token", newSession(account, mustChange));
         result.add("actor", actor(account, mustChange));
         json(exchange, 200, result);
         return;
@@ -255,6 +258,12 @@ public final class App {
         body(exchange);
         sessions.remove(exchange.getRequestHeaders().getFirst("Authorization").substring(7));
         json(exchange, 200, object("message", "Signed out."));
+      } else if (path.equals("/api/username")) {
+        JsonObject data = body(exchange);
+        service.setUsername(account, value(data, "username"));
+        JsonObject result = object("message", "Username saved. Use it the next time you log in.");
+        result.add("actor", actor(account, false));
+        json(exchange, 200, result);
       } else if (path.equals("/api/password/change")) {
         JsonObject data = body(exchange);
         service.changePassword(account, value(data, "currentPassword"), value(data, "newPassword"));
@@ -313,10 +322,21 @@ public final class App {
     sessions.entrySet().removeIf(entry -> entry.getValue().account().id().equals(id));
   }
 
-  private static JsonObject actor(Accounts.Account account, boolean mustChange) {
+  private String newSession(Accounts.Account account, boolean mustChange) {
+    sessions.entrySet().removeIf(entry -> entry.getValue().expires().isBefore(Instant.now()));
+    byte[] bytes = new byte[32];
+    new SecureRandom().nextBytes(bytes);
+    String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    sessions.put(token, new Session(account, Instant.now().plusSeconds(28800), mustChange));
+    return token;
+  }
+
+  /** {@code username} is null for an older account that has not chosen one yet. */
+  private JsonObject actor(Accounts.Account account, boolean mustChange) throws SQLException {
     JsonObject a = object("id", account.id());
     a.addProperty("role", account.role());
     a.addProperty("mustChangePassword", mustChange);
+    a.addProperty("username", service.username(account.id()));
     return a;
   }
 

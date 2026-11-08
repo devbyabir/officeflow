@@ -22,7 +22,7 @@ Nothing else is needed: no Maven and no build step.
    Documents\OfficeFlow-1.0.0.
 2. Open PowerShell in that folder: in File Explorer, right-click the folder
    and choose "Open in Terminal".
-3. First start only: choose an administrator password (12-120 characters).
+3. First start only: choose an administrator password (15-120 characters).
    Typing is hidden:
 
      $env:OFFICEFLOW_ADMIN_PASSWORD = [Net.NetworkCredential]::new("", (Read-Host "New OfficeFlow admin password" -AsSecureString)).Password

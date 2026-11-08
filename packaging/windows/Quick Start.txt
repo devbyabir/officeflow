@@ -32,10 +32,17 @@ means you accept them.
    administrator rights are needed for OfficeFlow itself.
 2. Open OfficeFlow from the Start menu. It runs in the background without a
    window and opens http://127.0.0.1:8080 in your browser.
-3. The first time, the "Set up OfficeFlow" screen asks for an administrator
-   password (12-120 characters). It works only on this computer, for 15
-   minutes, and only once. The administrator account ID is 001.
-4. Sign in as 001.
+3. The first time, the "Create account" screen asks for a username and a
+   password for the administrator. It works only on this computer, for 15
+   minutes, and only once. Afterwards you are logged in.
+4. Next time, use "Log in" with your username and password. Accounts from
+   before usernames can still log in with their account ID (the first
+   administrator is 001) and choose a username under Account.
+
+Passwords are passphrases of 15-120 characters; spaces are fine. Passwords
+set with an earlier version keep working. Forgot your login? The link on the
+Log in screen lists general reminders; an administrator can set a temporary
+password for a teacher.
 
 Closing the browser tab does not stop OfficeFlow. Open OfficeFlow from the
 Start menu again to get back to it.

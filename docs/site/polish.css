@@ -838,3 +838,68 @@ body.is-stopped .shell {
     transform: none;
   }
 }
+
+/* ---- Accounts: Create account, Log in, reminders and the username offer ---- */
+.form-grid .field-hint.full {
+  grid-column: 1 / -1;
+  margin: calc(var(--space-2) * -1) 0 0;
+}
+.forgot-link {
+  margin-top: var(--space-4);
+  font-size: 13px;
+}
+.login-reminders {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-3);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.login-reminders li {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  background: var(--bg);
+}
+.login-reminders strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.login-reminders code {
+  font-size: 13px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+.username-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-6);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--line));
+  border-radius: var(--card-radius);
+  background: var(--primary-soft);
+  animation: enter 0.2s ease both;
+}
+.username-prompt strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+.username-prompt span {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+}
+.username-prompt-actions {
+  display: flex;
+  gap: var(--space-2);
+}

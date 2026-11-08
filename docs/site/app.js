@@ -139,7 +139,7 @@ async function apiCall(path, body) {
     if (!response.ok && result.code === "SESSION_EXPIRED") {
       clearSession();
       loginDialog();
-      toast("Your session has ended. Please sign in again.");
+      toast("Your session has ended. Please log in again.");
     }
     if (!response.ok && result.code === "PASSWORD_CHANGE_REQUIRED")
       passwordDialog(false, true);
@@ -432,6 +432,15 @@ function teachers() {
     `<section class="panel"><div class="panel-heading"><div><h2>Teacher directory</h2><p>${state.teachers.length} people in this workspace.</p></div></div>${toolbar("teachers")}<div class="teacher-grid">${rows.map((t) => `<article class="teacher-card"><span class="avatar">${initials(t.name)}</span><h3>${escape(t.name)}</h3><p>${escape(t.department)}</p><p>${escape(t.email || "No email added")}</p><div class="card-actions"><small>${escape(t.id)}</small><button class="text-button" data-action="edit-teacher" data-id="${escape(t.id)}">Edit profile ↗</button></div></article>`).join("")}</div>${!rows.length ? empty("No teachers found", "Try a different search or add a teacher.") : ""}</section>`
   );
 }
+// After an older account logs in with its ID: a gentle offer to choose a username. "Later"
+// hides it for this browser tab only.
+function usernamePrompt() {
+  if (!api || !token || actor.username || actor.mustChangePassword || !actor.id) return "";
+  try {
+    if (sessionStorage.getItem("officeflow-username-later") === actor.id) return "";
+  } catch {}
+  return `<div class="username-prompt" role="status"><div><strong>Choose a username</strong><span>You logged in with account ID ${escape(actor.id)}. A username is easier to remember; your password stays the same and the ID keeps working.</span></div><div class="username-prompt-actions"><button class="button" data-action="dismiss-username">Later</button><button class="button primary" data-action="choose-username">Choose username</button></div></div>`;
+}
 function connectionView() {
   if (connection === "connecting")
     return `<section class="panel" aria-busy="true"><div class="empty" role="status"><span class="spinner" aria-hidden="true"></span><strong>Connecting to OfficeFlow…</strong><p>Checking the OfficeFlow server on this computer.</p></div></section>`;
@@ -465,13 +474,15 @@ function render() {
     teachers: "Teachers",
     history: "Activity & history",
   }[page];
-  $("#main").innerHTML = {
-    overview,
-    inventory,
-    requests,
-    teachers,
-    history: () => requests(true),
-  }[page]();
+  $("#main").innerHTML =
+    usernamePrompt() +
+    {
+      overview,
+      inventory,
+      requests,
+      teachers,
+      history: () => requests(true),
+    }[page]();
   if (lastRenderedPage !== page) {
     $("#main").classList.remove("fade-in");
     void $("#main").offsetWidth;
@@ -567,8 +578,10 @@ function help() {
 function accountDialog() {
   modal(
     "Your account",
-    `Signed in as ${escape(actor.id)}.`,
-    `<div class="identity-grid"><button class="button" data-action="change-password">Change password</button>${actor.role === "admin" ? '<button class="button" data-action="reset-password">Reset teacher password</button>' : ""}<button class="button" data-action="logout">Sign out</button><button class="button" data-action="quit">Quit OfficeFlow</button></div>`,
+    actor.username
+      ? `Logged in as ${escape(actor.username)} (account ID ${escape(actor.id)}).`
+      : `Logged in with account ID ${escape(actor.id)}. Choose a username to log in with next time.`,
+    `<div class="identity-grid"><button class="button${actor.username ? "" : " primary"}" data-action="choose-username">${actor.username ? "Change username" : "Choose a username"}</button><button class="button" data-action="change-password">Change password</button>${actor.role === "admin" ? '<button class="button" data-action="reset-password">Reset teacher password</button>' : ""}<button class="button" data-action="logout">Log out</button><button class="button" data-action="quit">Quit OfficeFlow</button></div>`,
   );
 }
 const SETUP_PROBLEMS = {
@@ -586,19 +599,19 @@ function setupScreen(status) {
   if (problem) {
     modal(
       "Set up OfficeFlow",
-      "OfficeFlow needs an administrator before anyone can sign in.",
+      "OfficeFlow needs an administrator before anyone can log in.",
       `<div class="setup-problem" role="alert"><strong>${escape(SETUP_PROBLEMS[problem] || SETUP_PROBLEMS.unavailable)}</strong><p>Quit OfficeFlow, then open it again from the Start menu to get a new setup screen. Nothing has been created yet.</p></div><div class="dialog-actions"><button class="button primary" data-action="quit">Quit OfficeFlow</button></div>`,
       true,
     );
     return;
   }
   modal(
-    "Set up OfficeFlow",
-    "Create the administrator password for this computer’s workspace.",
-    `<form data-form="setup"><div class="setup-account"><span class="avatar">001</span><div><strong>Administrator · account ID 001</strong><small>Manages supplies, teachers and approvals. You sign in with this ID.</small></div></div><div class="form-grid">${field("password", "Admin password", "", "password", 'full minlength="12" autocomplete="new-password"')}${field("confirmPassword", "Confirm password", "", "password", 'full minlength="12" autocomplete="new-password"')}</div><p class="field-hint">Use 12–120 characters. Keep it somewhere safe: it is needed to manage OfficeFlow and cannot be recovered.</p><div class="form-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button quiet" data-action="quit">Quit OfficeFlow</button><button class="button primary" type="submit">Create administrator</button></div></form>`,
+    "Create account",
+    "Create the administrator account for this computer’s OfficeFlow workspace.",
+    `<form data-form="setup"><div class="form-grid">${field("username", "Username", "", "text", 'full autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="32" aria-describedby="username-hint"')}<p class="field-hint full" id="username-hint">3–32 characters: start with a letter, then letters, numbers, dots, dashes or underscores.</p>${field("password", "Password", "", "password", 'full autocomplete="new-password" minlength="15" maxlength="120" aria-describedby="password-hint"')}${field("confirmPassword", "Confirm password", "", "password", 'full autocomplete="new-password" minlength="15" maxlength="120"')}<p class="field-hint full" id="password-hint">Use a passphrase of 15–120 characters, such as a few unrelated words. Spaces are fine. Let your browser save it: OfficeFlow cannot show or recover it.</p></div><div class="form-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button quiet" data-action="quit">Quit OfficeFlow</button><button class="button primary" type="submit">Create account</button></div></form>`,
     true,
   );
-  $("#field-password").focus();
+  $("#field-username").focus();
 }
 async function setupStatus() {
   try {
@@ -640,7 +653,7 @@ function passwordDialog(reset = false, forced = false) {
   }
   // forced: signed in with a temporary password; the server allows nothing else until it changes.
   const end = forced
-    ? `<div class="form-error" role="alert"></div><div class="dialog-actions"><button class="button" type="button" data-action="logout">Sign out</button><button class="button primary" type="submit">Change password</button></div></form>`
+    ? `<div class="form-error" role="alert"></div><div class="dialog-actions"><button class="button" type="button" data-action="logout">Log out</button><button class="button primary" type="submit">Change password</button></div></form>`
     : formEnd(reset ? "Reset password" : "Change password");
   modal(
     forced
@@ -649,11 +662,11 @@ function passwordDialog(reset = false, forced = false) {
         ? "Reset teacher password"
         : "Change password",
     forced
-      ? "You signed in with a temporary password. Choose a new one of 12-120 characters to continue."
+      ? "You logged in with a temporary password. Choose your own passphrase of 15–120 characters to continue."
       : reset
-        ? "Use 12-120 characters. This is a temporary password: the teacher must choose their own at next sign-in. Their sessions end now."
-        : "Use 12-120 characters. All sessions for this account will end after saving.",
-    `<form data-form="${reset ? "reset-password" : "change-password"}"><div class="form-grid">${reset ? `<div class="field full"><label for="field-id">Teacher</label><select id="field-id" name="id">${state.teachers.map((t) => `<option value="${escape(t.id)}">${escape(t.name)} (${escape(t.id)})</option>`).join("")}</select></div>` : field("currentPassword", forced ? "Temporary password" : "Current password", "", "password", 'full autocomplete="current-password"')}${field("newPassword", "New password", "", "password", 'full minlength="12" autocomplete="new-password"')}${field("confirmPassword", "Confirm new password", "", "password", 'full minlength="12" autocomplete="new-password"')}</div>${end}`,
+        ? "Use 15–120 characters. This is a temporary password: the teacher must choose their own at their next login. Their sessions end now."
+        : "Use a passphrase of 15–120 characters; spaces are fine. All sessions for this account end after saving.",
+    `<form data-form="${reset ? "reset-password" : "change-password"}"><div class="form-grid">${reset ? `<div class="field full"><label for="field-id">Teacher</label><select id="field-id" name="id">${state.teachers.map((t) => `<option value="${escape(t.id)}">${escape(t.name)} (${escape(t.id)})</option>`).join("")}</select></div>` : field("currentPassword", forced ? "Temporary password" : "Current password", "", "password", 'full autocomplete="current-password"')}${field("newPassword", "New password", "", "password", 'full minlength="15" autocomplete="new-password"')}${field("confirmPassword", "Confirm new password", "", "password", 'full minlength="15" autocomplete="new-password"')}</div>${end}`,
   );
 }
 function clearSession() {
@@ -665,15 +678,33 @@ function clearSession() {
   tablePage = 1;
   render();
 }
-function loginDialog(id = "") {
-  resumeAuth = () => loginDialog(id);
+function loginDialog(name = "") {
+  resumeAuth = () => loginDialog(name);
   modal(
-    "Welcome to OfficeFlow",
-    "Sign in to your workspace on this computer.",
-    `<form data-form="login"><div class="form-grid">${field("id", "Account ID", id, "text", 'full autocomplete="username"')}${field("password", "Password", "", "password", 'full autocomplete="current-password"')}</div><div class="form-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button quiet" data-action="quit">Quit OfficeFlow</button><button class="button primary" type="submit">Sign in</button></div></form>`,
+    "Log in",
+    "Log in to OfficeFlow on this computer.",
+    `<form data-form="login"><div class="form-grid">${field("username", "Username", name, "text", 'full autocomplete="username" autocapitalize="none" spellcheck="false" aria-describedby="login-hint"')}<p class="field-hint full" id="login-hint">Accounts created before usernames can use their account ID, such as 001.</p>${field("password", "Password", "", "password", 'full autocomplete="current-password"')}</div><div class="form-error" role="alert"></div><button type="button" class="text-button forgot-link" data-action="forgot-login">Forgot your login?</button><div class="dialog-actions"><button type="button" class="button quiet" data-action="quit">Quit OfficeFlow</button><button class="button primary" type="submit">Log in</button></div></form>`,
     true,
   );
-  $(id ? "#field-password" : "#field-id").focus();
+  $(name ? "#field-password" : "#field-username").focus();
+}
+// General reminders only: nothing here depends on, or reveals, any particular account.
+function forgotLoginDialog() {
+  modal(
+    "Forgot your login?",
+    "A few reminders that usually help.",
+    `<ul class="login-reminders"><li><strong>Username.</strong> Use the username you chose when the account was created, or later under Account. Usernames are not case-sensitive.</li><li><strong>Account ID.</strong> Accounts from before usernames can still log in with their account ID. The first administrator’s ID is <code>001</code>; teachers use the ID their administrator gave them.</li><li><strong>Saved passwords.</strong> Your browser or password manager may have saved the password for 127.0.0.1. Look there under OfficeFlow or 127.0.0.1.</li><li><strong>Teachers.</strong> Your administrator can set a temporary password for you.</li></ul><div class="dialog-actions"><button class="button primary" data-action="back-to-login">Back to log in</button></div>`,
+    true,
+  );
+}
+function usernameDialog() {
+  modal(
+    actor.username ? "Change username" : "Choose a username",
+    actor.username
+      ? "Your username is how you log in. Your password stays the same."
+      : `You log in with account ID ${escape(actor.id)} today. A username is easier to remember; the ID keeps working too.`,
+    `<form data-form="username"><div class="form-grid">${field("username", "Username", actor.username || "", "text", 'full autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="32"')}<p class="field-hint full">3–32 characters: start with a letter, then letters, numbers, dots, dashes or underscores. It must not be in use.</p></div>${formEnd("Save username")}`,
+  );
 }
 function download() {
   let rows, name;
@@ -756,6 +787,25 @@ document.addEventListener("click", async (event) => {
       quitDialog();
       return;
     }
+    if (action === "forgot-login") {
+      forgotLoginDialog();
+      return;
+    }
+    if (action === "back-to-login") {
+      loginDialog();
+      return;
+    }
+    if (action === "choose-username") {
+      usernameDialog();
+      return;
+    }
+    if (action === "dismiss-username") {
+      try {
+        sessionStorage.setItem("officeflow-username-later", actor.id);
+      } catch {}
+      render();
+      return;
+    }
     if (action === "keep-working") {
       if (resumeAuth) resumeAuth();
       else closeModal();
@@ -778,7 +828,7 @@ document.addEventListener("click", async (event) => {
       await apiCall("logout", {});
       clearSession();
       loginDialog();
-      toast("Signed out. Your session has ended.");
+      toast("Logged out. Your session has ended.");
     } else if (action === "close") closeModal();
     else if (action === "new-supply" || action === "edit-supply")
       supplyDialog(id);
@@ -838,9 +888,11 @@ document.addEventListener("submit", async (event) => {
     if (form.dataset.form === "setup") {
       if (data.password !== data.confirmPassword)
         throw Error("The passwords do not match.");
+      let response;
       try {
-        await apiCall("setup", {
+        response = await apiCall("setup", {
           token: setupToken,
+          username: data.username,
           password: data.password,
           confirmPassword: data.confirmPassword,
         });
@@ -850,8 +902,24 @@ document.addEventListener("submit", async (event) => {
         return;
       }
       forgetSetupToken();
-      loginDialog("001");
-      toast("OfficeFlow is ready. Sign in with ID 001 and your new password.", "success");
+      token = response.token;
+      sessionStorage.setItem("officeflow-token", token);
+      actor = response.actor;
+      state = await apiCall("state");
+      closeModal();
+      render();
+      toast(
+        `Your account is ready. You’re logged in as ${actor.username}.`,
+        "success",
+      );
+      return;
+    }
+    if (form.dataset.form === "username") {
+      const response = await apiCall("username", { username: data.username });
+      actor = { ...actor, username: response.actor.username };
+      closeModal();
+      render();
+      toast(`Username saved. Log in as ${actor.username} next time.`, "success");
       return;
     }
     if (form.dataset.form === "login") {
@@ -874,7 +942,7 @@ document.addEventListener("submit", async (event) => {
       if (!reset) {
         clearSession();
         loginDialog();
-        toast("Password changed. Sign in with your new password.");
+        toast("Password changed. Log in with your new password.");
         return;
       }
       closeModal();

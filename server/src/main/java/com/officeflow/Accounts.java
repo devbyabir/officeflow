@@ -50,10 +50,33 @@ public final class Accounts {
     }
   }
 
-  /** The single password policy for chosen, reset and initial administrator passwords. */
+  public static final int MINIMUM_PASSWORD = 15;
+  public static final int MAXIMUM_PASSWORD = 120;
+
+  /**
+   * The policy for every new password: chosen, reset and initial administrator passwords. A
+   * passphrase of 15–120 characters, with no rules about digits or symbols. Passwords set under
+   * the earlier 12-character rule keep working, because sign-in only compares the stored hash.
+   */
   public static void validatePassword(String password) {
-    if (password.length() < 12 || password.length() > 120 || password.isBlank())
-      throw new IllegalArgumentException("Use a password with 12–120 characters.");
+    if (password.length() < MINIMUM_PASSWORD
+        || password.length() > MAXIMUM_PASSWORD
+        || password.isBlank())
+      throw new IllegalArgumentException(
+          "Use a passphrase of 15–120 characters. Spaces and any characters are fine.");
+  }
+
+  /**
+   * Usernames are 3–32 characters: a letter first, then letters, digits, dots, dashes or
+   * underscores. They are stored in lower case and compared without regard to case.
+   */
+  public static String normalizeUsername(String username) {
+    String value = username == null ? "" : username.trim().toLowerCase(java.util.Locale.ROOT);
+    if (!value.matches("[a-z][a-z0-9._-]{2,31}"))
+      throw new IllegalArgumentException(
+          "Use a username of 3–32 characters: start with a letter, then letters, numbers,"
+              + " dots, dashes or underscores.");
+    return value;
   }
 
   // No 0/O, 1/l/I, so a temporary password can be read aloud or copied by hand.

@@ -37,7 +37,7 @@ function Invoke-Api([string]$Path, $Body = $null, [string]$Token = "", [int]$Exp
 }
 function Test-Ready { try { (Invoke-RestMethod "$base/api/health" -TimeoutSec 2).service -eq "officeflow" } catch { $false } }
 function Test-PortFree { -not (Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue) }
-function Login { (Invoke-Api "/api/login" @{ id = "001"; password = $password }).token }
+function Login { (Invoke-Api "/api/login" @{ username = "installer.admin"; password = $password }).token }
 function Get-Supplies { @((Invoke-Api "/api/state" -Token (Login)).supplies | ForEach-Object { $_.name }) }
 function Get-CleanStops { if (Test-Path $log) { @(Get-Content $log | Where-Object { $_ -match 'stopped cleanly; database closed' }).Count } else { 0 } }
 function Get-DisplayVersion { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$appId" -ErrorAction SilentlyContinue).DisplayVersion }
@@ -126,7 +126,8 @@ try {
   $start = Start-FromShortcut
   Assert ($start.Url -match '^http://127\.0\.0\.1:8080/#setup=([A-Za-z0-9_-]{32,128})$') "the first start opens the setup screen ($($start.Url))"
   $token = $Matches[1]
-  Invoke-Api "/api/setup" @{ token = $token; password = $password; confirmPassword = $password } | Out-Null
+  $created = Invoke-Api "/api/setup" @{ token = $token; username = "Installer.Admin"; password = $password; confirmPassword = $password }
+  Assert ($created.actor.username -eq "installer.admin" -and $created.token) "Create account signs the administrator in"
   Assert ((Invoke-Api "/api/setup").status -eq "done") "setup is closed after the first administrator"
   Assert (Test-Path $database) "the workspace is created at $database"
   Assert (-not (Test-Path (Join-Path $installDir "officeflow.mv.db"))) "no data inside the install folder"
@@ -140,6 +141,7 @@ try {
   $start = Start-FromShortcut
   Assert ($start.Url -eq "$base/") "a returning start opens sign-in, not setup ($($start.Url))"
   Assert ((Get-Supplies) -contains "Installer check paper") "the item survives quitting and reopening"
+  Assert ((Invoke-Api "/api/login" @{ username = "001"; password = $password }).actor.username -eq "installer.admin") "the account ID 001 still logs in"
 
   # Upgrade while OfficeFlow runs: setup asks it to quit cleanly, then replaces the files.
   $before = Get-CleanStops
