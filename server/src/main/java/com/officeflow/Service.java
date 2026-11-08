@@ -28,6 +28,16 @@ public final class Service {
         : new Accounts.Teacher(id);
   }
 
+  /** True until the first administrator has been created. */
+  public synchronized boolean setupRequired() throws SQLException {
+    return !store.hasAdministrator();
+  }
+
+  /** Creates administrator 001 once; refused when an administrator already exists. */
+  public synchronized void createFirstAdministrator(String password) throws SQLException {
+    store.createFirstAdministrator(password);
+  }
+
   /** True while the account still has a temporary password that its owner must replace. */
   public synchronized boolean passwordChangeRequired(String id) throws SQLException {
     String[] credential = store.credential(id);

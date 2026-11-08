@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">OfficeFlow</title>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="#12233D"/>
+  <path d="M27 49V41a8 8 0 0 1 8-8h16l10 10h31a9 9 0 0 1 9 9v35a10 10 0 0 1-10 10H37a10 10 0 0 1-10-10Z" fill="#5FE0BE"/>
+  <path d="M43 69h40m-13-12 13 12-13 12" fill="none" stroke="#12233D" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

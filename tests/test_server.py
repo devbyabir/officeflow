@@ -394,11 +394,87 @@ def startup_paths(temp):
           " detection without moving or creating files.")
 
 
+def browser_setup(temp):
+    """First run from OfficeFlow.exe: one-time setup token, localhost only, then sign-in; quit."""
+    db = Path(temp) / "browser-setup" / "officeflow"
+    token = "T" * 20 + "setup-token-for-tests_0123"
+    options = [database(db), "-Dofficeflow.browserSetup=true"]
+    server = start(temp, options, clean_env(OFFICEFLOW_SETUP_TOKEN=token))
+    try:
+        call = client(server.base)
+        assert token not in server.output(), "a token chosen by the launcher is never printed"
+        assert call("/api/setup") == {"required": True, "status": "ready"}
+        call("/api/login", {"id": "001", "password": ADMIN_PASSWORD}, expected=403)
+        call("/api/state", expected=403)
+        # Another site's name for 127.0.0.1 (DNS rebinding) is refused before anything else.
+        port = server.base.rstrip("/").rsplit(":", 1)[1]
+        spoofed = urllib.request.Request(server.base + "/api/setup",
+                                         headers={"Host": "officeflow.example:" + port})
+        try:
+            urllib.request.urlopen(spoofed, timeout=10)
+            raise AssertionError("a foreign Host header reached setup")
+        except urllib.error.HTTPError as error:
+            assert error.code == 403, error.code
+        # A weak or mismatched password is rejected without using up the token.
+        call("/api/setup", {"token": token, "password": "short"}, expected=400)
+        call("/api/setup", {"token": token, "password": ADMIN_PASSWORD,
+                            "confirmPassword": ADMIN_PASSWORD + "x"}, expected=400)
+        wrong = call("/api/setup", {"token": "x" * 43, "password": ADMIN_PASSWORD}, expected=403)
+        assert wrong["code"] == "SETUP_TOKEN_INVALID", wrong
+        assert call("/api/setup")["status"] == "ready"
+        done = call("/api/setup", {"token": token, "password": ADMIN_PASSWORD,
+                                   "confirmPassword": ADMIN_PASSWORD})
+        assert done["id"] == "001", done
+        assert call("/api/setup") == {"required": False, "status": "done"}
+        # Setup is closed for good: the same token or a new password cannot replace the admin.
+        call("/api/setup", {"token": token, "password": "replacement-password"}, expected=409)
+        call("/api/login", {"id": "001", "password": "replacement-password"}, expected=403)
+        call("/api/login", {"id": "001", "password": ADMIN_PASSWORD})
+        # Quit needs a JSON POST from this computer; it stops cleanly with exit code 0.
+        call("/api/quit", expected=400)
+        assert call("/api/quit", {})["message"] == "OfficeFlow is stopping."
+        server.process.wait(timeout=20)
+        assert server.process.returncode == 0, server.process.returncode
+        assert "OfficeFlow stopped cleanly; the database is closed." in server.output()
+    finally:
+        server.stop()
+    log = (db.parent / "officeflow.log").read_text(encoding="utf-8")
+    assert "(first-run setup)" in log, log
+    assert log.rstrip().endswith("stopped cleanly; database closed"), log
+
+    # Returning users: the same workspace opens to sign-in, with the account preserved.
+    server = start(temp, options, clean_env(OFFICEFLOW_SETUP_TOKEN=token,
+                                            OFFICEFLOW_ADMIN_PASSWORD="ignored-password-1"))
+    try:
+        call = client(server.base)
+        assert call("/api/setup") == {"required": False, "status": "done"}
+        call("/api/setup", {"token": token, "password": "replacement-password"}, expected=409)
+        call("/api/login", {"id": "001", "password": ADMIN_PASSWORD})
+        call("/api/login", {"id": "001", "password": "ignored-password-1"}, expected=403)
+    finally:
+        server.stop()
+
+    # Started by hand without a launcher token: a generated one is printed for this person only.
+    fresh = Path(temp) / "browser-setup-manual" / "officeflow"
+    server = start(temp, [database(fresh), "-Dofficeflow.browserSetup=true"], clean_env())
+    try:
+        lines = [line for line in server.output().splitlines() if "/#setup=" in line]
+        assert lines and "within 15 minutes" in lines[0], server.output()
+        printed = lines[0].split("/#setup=", 1)[1].split()[0]
+        client(server.base)("/api/setup", {"token": printed, "password": ADMIN_PASSWORD})
+        client(server.base)("/api/login", {"id": "001", "password": ADMIN_PASSWORD})
+    finally:
+        server.stop()
+    print("Browser setup passed: one-time token, Host check, password policy before the token"
+          " is used, setup closed after the first admin, account kept on restart, clean quit.")
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="officeflow-http-") as temp:
         workflow(temp)
         seed_flag_and_backup(temp)
         startup_paths(temp)
+        browser_setup(temp)
     print("HTTP integration passed.")
 
 

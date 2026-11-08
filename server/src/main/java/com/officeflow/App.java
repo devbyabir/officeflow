@@ -30,6 +30,10 @@ public final class App {
   private static final Set<String> TEMPORARY_PASSWORD_PATHS =
       Set.of("/api/session", "/api/password/change", "/api/logout");
 
+  private static final String SETUP_UNAVAILABLE =
+      "This setup link has expired or was already used. Quit OfficeFlow, then open it again"
+          + " from the Start menu to get a new setup screen.";
+
   /** Signals that the signed-in account must replace its temporary password first. */
   private static final class PasswordChangeRequired extends SecurityException {
     private static final long serialVersionUID = 1L;
@@ -45,6 +49,10 @@ public final class App {
   private final HttpServer server;
   private long loginWindow;
   private int failedLogins;
+  /** Present only while the workspace has no administrator and browser setup is enabled. */
+  private volatile SetupToken setup;
+  /** Ends the Java process; the shutdown hook closes the database and logs a clean stop. */
+  private Runnable quitAction = () -> System.exit(0);
 
   public App(Service service, Path site, int port) throws IOException {
     this.service = service;
@@ -52,6 +60,71 @@ public final class App {
     server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
     server.createContext("/api/", this::api);
     server.createContext("/", this::staticFile);
+  }
+
+  /** Allows creating the first administrator from the browser with this one-time token. */
+  void enableBrowserSetup(SetupToken token) {
+    setup = token;
+  }
+
+  void onQuit(Runnable action) {
+    quitAction = action;
+  }
+
+  /**
+   * True for requests from this computer that name OfficeFlow's own address. The Host check
+   * stops a web page that rebinds its own domain name to 127.0.0.1 from reaching setup or quit.
+   */
+  private boolean fromThisComputer(HttpExchange exchange) {
+    if (!exchange.getRemoteAddress().getAddress().isLoopbackAddress()) return false;
+    String host = exchange.getRequestHeaders().getFirst("Host");
+    int port = port();
+    return host != null
+        && (host.equals("127.0.0.1:" + port)
+            || host.equals("localhost:" + port)
+            || host.equals("[::1]:" + port));
+  }
+
+  private JsonObject setupStatus() throws SQLException {
+    boolean required = service.setupRequired();
+    SetupToken token = setup;
+    JsonObject result = new JsonObject();
+    result.addProperty("required", required);
+    String status =
+        !required
+            ? "done"
+            : token == null
+                ? "unavailable"
+                : token.status(Instant.now()).name().toLowerCase(java.util.Locale.ROOT);
+    result.addProperty("status", status);
+    return result;
+  }
+
+  private void completeSetup(HttpExchange exchange) throws IOException, SQLException {
+    JsonObject data = body(exchange);
+    if (!service.setupRequired()) {
+      setup = null;
+      json(exchange, 409, object("error", "OfficeFlow is already set up. Sign in instead."));
+      return;
+    }
+    String password = value(data, "password");
+    if (password.length() > 200) throw new IllegalArgumentException("The password is too long.");
+    // Checked before the token is used up, so a mistyped password can simply be corrected.
+    Accounts.validatePassword(password);
+    if (data.has("confirmPassword") && !password.equals(value(data, "confirmPassword")))
+      throw new IllegalArgumentException("The passwords do not match.");
+    SetupToken token = setup;
+    if (token == null || !token.redeem(value(data, "token"), Instant.now())) {
+      JsonObject result = object("error", SETUP_UNAVAILABLE);
+      result.addProperty("code", "SETUP_TOKEN_INVALID");
+      json(exchange, 403, result);
+      return;
+    }
+    service.createFirstAdministrator(password);
+    setup = null;
+    JsonObject result = object("message", "OfficeFlow is ready. Sign in with ID 001.");
+    result.addProperty("id", "001");
+    json(exchange, 200, result);
   }
 
   public void start() {
@@ -133,6 +206,32 @@ public final class App {
       String path = exchange.getRequestURI().getPath();
       if (path.equals("/api/health") && exchange.getRequestMethod().equals("GET")) {
         json(exchange, 200, object("service", "officeflow"));
+        return;
+      }
+      if (path.equals("/api/setup") || path.equals("/api/quit")) {
+        if (!fromThisComputer(exchange)) {
+          json(exchange, 403, object("error", "Only available on this computer."));
+          return;
+        }
+        if (path.equals("/api/quit")) {
+          // A JSON body is required, so a page on another site cannot trigger this without a
+          // CORS preflight, which OfficeFlow never approves.
+          body(exchange);
+          json(exchange, 200, object("message", "OfficeFlow is stopping."));
+          Thread stopper =
+              new Thread(
+                  () -> {
+                    try {
+                      Thread.sleep(250); // Lets the response reach the browser first.
+                    } catch (InterruptedException ignored) {
+                      Thread.currentThread().interrupt();
+                    }
+                    quitAction.run();
+                  },
+                  "officeflow-quit");
+          stopper.start();
+        } else if (exchange.getRequestMethod().equals("GET")) json(exchange, 200, setupStatus());
+        else completeSetup(exchange);
         return;
       }
       if (path.equals("/api/login")) {
@@ -248,7 +347,9 @@ public final class App {
                         ? "application/json"
                         : file.toString().endsWith(".html")
                             ? "text/html"
-                            : "application/octet-stream";
+                            : file.toString().endsWith(".ico")
+                                ? "image/x-icon"
+                                : "application/octet-stream";
     exchange.getResponseHeaders().set("Content-Type", type + "; charset=utf-8");
     exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
     byte[] bytes = Files.readAllBytes(file);
@@ -272,21 +373,25 @@ public final class App {
     Store store;
     Path site;
     String url;
+    // OfficeFlow.exe turns this on: a new workspace then asks for its administrator password on
+    // a "Set up OfficeFlow" screen in the browser instead of in a terminal.
+    boolean browserSetup = Boolean.getBoolean("officeflow.browserSetup");
     try {
       Startup.rejectSeedFlag(System.getProperty("officeflow.seed"));
       site = startup.site(System.getProperty("officeflow.site"));
       url = startup.database(System.getProperty("officeflow.db"));
-      startup.requireAdminPasswordForNewWorkspace(url);
+      if (!browserSetup) startup.requireAdminPasswordForNewWorkspace(url);
       try {
-        store = new Store(url, System.getenv("OFFICEFLOW_ADMIN_PASSWORD"));
+        store = new Store(url, System.getenv("OFFICEFLOW_ADMIN_PASSWORD"), browserSetup);
       } catch (IllegalStateException exception) {
         throw new Startup.Problem(Startup.newWorkspaceMessage(url));
       } catch (SQLException exception) {
         if (exception.getErrorCode() == 90020)
           throw new Startup.Problem(
-              "The database is already open in another OfficeFlow window:\n  "
+              "The workspace is already open in another copy of OfficeFlow:\n  "
                   + url
-                  + "\nUse that window, or stop it with Ctrl+C and start OfficeFlow again.");
+                  + "\nUse the OfficeFlow that is already running, or quit it and start"
+                  + " OfficeFlow again.");
         throw exception;
       }
     } catch (Startup.Problem problem) {
@@ -296,8 +401,12 @@ public final class App {
     }
     int port = Integer.getInteger("officeflow.port", 8080);
     App app;
+    Service service = new Service(store);
+    SetupToken setup = null;
+    if (browserSetup && service.setupRequired())
+      setup = SetupToken.create(System.getenv("OFFICEFLOW_SETUP_TOKEN"), Instant.now());
     try {
-      app = new App(new Service(store), site, port);
+      app = new App(service, site, port);
     } catch (java.net.BindException exception) {
       store.close();
       System.err.println(
@@ -328,8 +437,9 @@ public final class App {
                     logEvent(events, "stop failed: database close error " + exception.getSQLState());
                   }
                 }));
+    if (setup != null) app.enableBrowserSetup(setup);
     app.start();
-    logEvent(events, "started on port " + app.port());
+    logEvent(events, "started on port " + app.port() + (setup != null ? " (first-run setup)" : ""));
     // OfficeFlow.exe stops Java by closing its input (Ctrl+C or closing the window); that also
     // happens if the launcher itself ends. Exiting runs the shutdown hook above.
     if (Boolean.getBoolean("officeflow.stopWhenInputCloses")) {
@@ -349,6 +459,18 @@ public final class App {
     System.out.println("OfficeFlow: http://127.0.0.1:" + app.port());
     System.out.println("Database: " + (file == null ? url : file));
     System.out.println("Web files: " + site.toAbsolutePath());
+    if (setup != null) {
+      // A token chosen by OfficeFlow.exe is never printed: the launcher opens the browser with it.
+      if (SetupToken.valid(System.getenv("OFFICEFLOW_SETUP_TOKEN")))
+        System.out.println("First start: the setup screen opens in your browser.");
+      else
+        System.out.println(
+            "First start: open http://127.0.0.1:"
+                + app.port()
+                + "/#setup="
+                + setup.value()
+                + " within 15 minutes to create the administrator password.");
+    }
     System.out.println("Keep this window open while you use OfficeFlow. Press Ctrl+C to stop.");
   }
 

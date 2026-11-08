@@ -1,49 +1,56 @@
 //go:build windows
 
-// OfficeFlow.exe starts installed OfficeFlow. It checks the Microsoft Visual C++
-// runtime, asks for the first administrator password with hidden input, starts the bundled Java
-// runtime, opens the browser when the server answers and waits until OfficeFlow stops.
-// Its only child process is runtime\bin\java.exe; it never starts cmd.exe or PowerShell.
+// OfficeFlow.exe starts installed OfficeFlow without a console window. It checks the Microsoft
+// Visual C++ runtime, starts the bundled Java runtime in the background, and opens the browser
+// once the server answers: on a new workspace with a one-time setup link, otherwise on sign-in.
+// It keeps running, without a window, until OfficeFlow is quit from the browser or with
+// "OfficeFlow.exe --quit" (the "Quit OfficeFlow" Start menu shortcut), and shows a message box
+// if OfficeFlow cannot start. Its only child process is runtime\bin\java.exe; it never starts
+// cmd.exe or PowerShell.
 package main
 
 import (
-	"bufio"
-	"errors"
+	"bytes"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
 
 const (
-	serverURL          = "http://127.0.0.1:8080/"
+	serverAddress       = "127.0.0.1:8080"
+	serverURL           = "http://" + serverAddress + "/"
 	redistributablePage = "https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist"
-	ctrlCExit          = 0xC000013A // STATUS_CONTROL_C_EXIT
-	createNoWindow     = 0x08000000 // CREATE_NO_WINDOW: Java gets no console of its own
+	createNoWindow      = 0x08000000 // CREATE_NO_WINDOW: Java gets no console of its own
+	startTimeout        = 90 * time.Second
+	quitTimeout         = 30 * time.Second
 )
 
-// forwardTo copies Java's output into this window. Wrapping the file makes exec use a pipe,
-// because Java has no console to write to directly.
-type forwardTo struct{ target io.Writer }
-
-func (f forwardTo) Write(data []byte) (int, error) { return f.target.Write(data) }
-
 func main() {
-	os.Exit(run())
+	os.Exit(run(os.Args[1:]))
 }
 
-func run() int {
-	setConsoleTitle("OfficeFlow")
-	holdInstanceMutex()
+func run(arguments []string) int {
+	if len(arguments) > 0 && arguments[0] == "--quit" {
+		return quitRunning()
+	}
+	if !holdInstanceMutex() {
+		// Another OfficeFlow.exe is starting or running: bring up its "window", the browser.
+		return openRunning()
+	}
 	executable, err := os.Executable()
 	if err != nil {
-		return fail("OfficeFlow could not find its own folder: %v", err)
+		return failure("OfficeFlow could not find its own folder.", err.Error())
 	}
 	if resolved, err := filepath.EvalSymlinks(executable); err == nil {
 		executable = resolved
@@ -53,144 +60,170 @@ func run() int {
 	jar := filepath.Join(root, "app", "officeflow.jar")
 	site := filepath.Join(root, "app", "site")
 
-	if !exists(java) {
-		return fail("The Java runtime is missing from this folder:\n  %s\n"+
-			"Run OfficeFlow setup again to repair the installation.", java)
-	}
-	if !exists(jar) || !exists(filepath.Join(site, "index.html")) {
-		return fail("Some OfficeFlow files are missing from:\n  %s\n"+
-			"Run OfficeFlow setup again to repair the installation.", root)
+	if !exists(java) || !exists(jar) || !exists(filepath.Join(site, "index.html")) {
+		return failure("Some OfficeFlow files are missing from "+root+".",
+			"Run OfficeFlow setup again to repair the installation. Your workspace is not affected.")
 	}
 	if problem := checkVisualCpp(systemDirectory()); problem != "" {
 		openBrowser(redistributablePage)
-		return fail("OfficeFlow needs the Microsoft Visual C++ Redistributable for Visual Studio 2015-2022 (x64), "+
-			"version 14.40 or newer.\n%s\n\nDownload it from Microsoft's official page:\n  %s\n"+
-			"Choose the X64 download (vc_redist.x64.exe), install it, then start OfficeFlow again.",
-			problem, redistributablePage)
+		return failure("OfficeFlow needs the Microsoft Visual C++ Redistributable (x64), version 14.40 or newer.",
+			problem+"\n\nYour browser now shows Microsoft's download page. Choose the X64 file "+
+				"(vc_redist.x64.exe), install it, then open OfficeFlow again.")
 	}
 	if officeFlowAnswers(2 * time.Second) {
-		fmt.Println("OfficeFlow is already running. Opening " + serverURL)
-		fmt.Println("Use the other OfficeFlow window to stop it.")
+		// Started some other way (for example from the ZIP): use that one.
 		openBrowser(serverURL)
-		time.Sleep(3 * time.Second)
 		return 0
 	}
-
-	database := filepath.Join(os.Getenv("LOCALAPPDATA"), "OfficeFlow", "officeflow.mv.db")
-	environment := os.Environ()
-	if !exists(database) && os.Getenv("OFFICEFLOW_ADMIN_PASSWORD") == "" {
-		password, err := askNewPassword(bufio.NewReader(os.Stdin), stdinIsConsole())
-		if err != nil {
-			return fail("%v", err)
-		}
-		// Passed only in the child's environment: never on a command line or in output.
-		environment = append(environment, "OFFICEFLOW_ADMIN_PASSWORD="+password)
+	if !portFree(serverAddress) {
+		return failure("Another program is using port 8080 on this computer, so OfficeFlow cannot start.",
+			"Close that program, then open OfficeFlow again. Your workspace has not been changed.")
 	}
 
-	fmt.Println()
-	fmt.Println("Starting OfficeFlow. Your workspace: " + database)
-	fmt.Println("Keep this window open while you use OfficeFlow. To stop it, press Ctrl+C or close this window.")
-	fmt.Println()
+	data := filepath.Join(os.Getenv("LOCALAPPDATA"), "OfficeFlow")
+	if err := os.MkdirAll(data, 0o700); err != nil {
+		return failure("OfficeFlow could not create its workspace folder "+data+".", err.Error())
+	}
+	// Java's output, replaced on every start, for support. The workspace log officeflow.log
+	// (written by Java) records each start and clean stop.
+	logPath := filepath.Join(data, "launcher.log")
+	logFile, err := os.Create(logPath)
+	if err != nil {
+		return failure("OfficeFlow could not write "+logPath+".", err.Error())
+	}
+	defer logFile.Close()
+	tail := &lastLines{limit: 12}
+	output := io.MultiWriter(logFile, tail)
 
-	// Java runs without its own console, so Windows never ends it abruptly when this window
-	// closes. On Ctrl+C or window close the launcher closes Java's input, and Java shuts down
-	// cleanly (closing the database) while the launcher waits. If the launcher itself ends,
-	// the input closes too.
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
-
-	command := exec.Command(java, "-Dofficeflow.site="+site, "-Dofficeflow.stopWhenInputCloses=true", "-jar", jar)
+	token, err := newSetupToken()
+	if err != nil {
+		return failure("OfficeFlow could not prepare its setup link.", err.Error())
+	}
+	command := exec.Command(java, "-Dofficeflow.site="+site, "-Dofficeflow.browserSetup=true",
+		"-Dofficeflow.stopWhenInputCloses=true", "-jar", jar)
 	command.Dir = root
-	command.Env = environment
-	command.Stdout = forwardTo{os.Stdout}
-	command.Stderr = forwardTo{os.Stderr}
-	command.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNoWindow}
+	// The token is passed only in Java's environment and in the URL fragment the browser opens:
+	// never on a command line, in a log, or in a request the browser sends.
+	command.Env = append(os.Environ(), "OFFICEFLOW_SETUP_TOKEN="+token)
+	command.Stdout = output
+	command.Stderr = output
+	command.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNoWindow, HideWindow: true}
+	// Java stops cleanly when its input closes, which also happens if this launcher ends.
 	input, err := command.StdinPipe()
 	if err != nil {
-		return fail("OfficeFlow could not prepare Java: %v", err)
+		return failure("OfficeFlow could not prepare Java.", err.Error())
 	}
 	if err := command.Start(); err != nil {
-		return fail("OfficeFlow could not start Java: %v", err)
+		return failure("OfficeFlow could not start its Java runtime.", err.Error())
 	}
+	defer input.Close()
+	exited := make(chan struct{})
 	go func() {
-		<-signals
-		fmt.Println()
-		fmt.Println("Stopping OfficeFlow...")
-		input.Close()
+		command.Wait()
+		close(exited)
 	}()
-	stopped := make(chan struct{})
-	go openWhenReady(stopped)
-	waitErr := command.Wait()
-	close(stopped)
 
-	code := 0
-	if command.ProcessState != nil {
-		code = command.ProcessState.ExitCode()
-	} else if waitErr != nil {
-		return fail("OfficeFlow stopped unexpectedly: %v", waitErr)
+	select {
+	case <-exited:
+		return failure("OfficeFlow could not start.", startupDetails(tail.String(), logPath))
+	case ready := <-waitUntilReady(startTimeout, exited):
+		if !ready {
+			select {
+			case <-exited:
+				return failure("OfficeFlow could not start.", startupDetails(tail.String(), logPath))
+			default:
+			}
+			input.Close()
+			<-exited
+			return failure("OfficeFlow did not start within 90 seconds.", startupDetails(tail.String(), logPath))
+		}
 	}
-	if code != 0 && code != 130 && uint32(code) != ctrlCExit {
-		return fail("OfficeFlow stopped because of the problem shown above (exit code %d).", code)
+	setup, _ := setupRequired()
+	openBrowser(browserURL(setup, token))
+
+	<-exited
+	if code := command.ProcessState.ExitCode(); code != 0 {
+		return failure(fmt.Sprintf("OfficeFlow stopped unexpectedly (exit code %d).", code),
+			startupDetails(tail.String(), logPath))
 	}
-	fmt.Println("OfficeFlow has stopped. Your workspace is saved in " + database)
 	return 0
 }
 
-// askNewPassword asks twice for the first administrator password, with echo off on a console.
-func askNewPassword(input *bufio.Reader, console bool) (string, error) {
-	fmt.Println("Welcome to OfficeFlow. This is the first start for this Windows account.")
-	fmt.Println("Choose a password for the administrator account (ID 001). Use 12-120 characters.")
-	fmt.Println("Typing is hidden. Keep this password safe; it is needed to manage OfficeFlow.")
-	for attempt := 0; attempt < 3; attempt++ {
-		first, err := readSecret("New admin password: ", input, console)
-		if err != nil {
-			break
-		}
-		second, err := readSecret("Type it again: ", input, console)
-		if err != nil {
-			break
-		}
-		if first != second {
-			fmt.Println("The passwords do not match. Try again.")
-			continue
-		}
-		if !validPassword(first) {
-			fmt.Println("Use 12-120 characters. Try again.")
-			continue
-		}
-		return first, nil
+// browserURL opens the setup screen with the one-time token while the workspace has no
+// administrator. The fragment (#...) stays in the browser; it is never sent to the server.
+func browserURL(setup bool, token string) string {
+	if setup {
+		return serverURL + "#setup=" + token
 	}
-	return "", errors.New("No administrator password was set, so no workspace was created. " +
-		"Start OfficeFlow again to retry.")
+	return serverURL
 }
 
-func readSecret(prompt string, input *bufio.Reader, console bool) (string, error) {
-	fmt.Print(prompt)
-	if console {
-		restore := hideConsoleInput()
-		defer func() {
-			restore()
-			fmt.Println()
-		}()
-	}
-	line, err := input.ReadString('\n')
-	if err != nil && !(errors.Is(err, io.EOF) && line != "") {
+func newSetupToken() (string, error) {
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
 		return "", err
 	}
-	return strings.TrimRight(line, "\r\n"), nil
+	return base64.RawURLEncoding.EncodeToString(secret), nil
 }
 
-// validPassword matches the server's policy: 12-120 UTF-16 code units and not only spaces.
-func validPassword(password string) bool {
-	units := 0
-	for _, r := range password {
-		if r > 0xFFFF {
-			units += 2
-		} else {
-			units++
-		}
+func startupDetails(output, logPath string) string {
+	output = strings.TrimSpace(output)
+	if output == "" {
+		output = "OfficeFlow ended without a message."
 	}
-	return units >= 12 && units <= 120 && strings.TrimSpace(password) != ""
+	return output + "\n\nDetails are saved in " + logPath + "\nYour workspace has not been changed."
+}
+
+// openRunning waits for an OfficeFlow that is starting, then opens the browser on it.
+func openRunning() int {
+	deadline := time.Now().Add(startTimeout)
+	for time.Now().Before(deadline) {
+		if officeFlowAnswers(time.Second) {
+			openBrowser(serverURL)
+			return 0
+		}
+		if !instanceRunning() {
+			return failure("OfficeFlow stopped while it was opening.", "Open OfficeFlow again.")
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return failure("OfficeFlow is taking too long to start.", "Wait a moment, then open OfficeFlow again.")
+}
+
+// quitRunning asks OfficeFlow to stop cleanly and waits until it has.
+func quitRunning() int {
+	if !officeFlowAnswers(2 * time.Second) {
+		if instanceRunning() {
+			return failure("OfficeFlow is still starting or stopping.", "Try again in a moment.")
+		}
+		notify("OfficeFlow is not running.")
+		return 0
+	}
+	if err := requestQuit(); err != nil {
+		return failure("OfficeFlow could not be asked to quit.", err.Error())
+	}
+	deadline := time.Now().Add(quitTimeout)
+	for time.Now().Before(deadline) {
+		if !instanceRunning() && !officeFlowAnswers(time.Second) {
+			notify("OfficeFlow has stopped. Your workspace is saved.")
+			return 0
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	return failure("OfficeFlow did not stop within 30 seconds.", "Try again in a moment.")
+}
+
+func requestQuit() error {
+	client := http.Client{Timeout: 5 * time.Second}
+	response, err := client.Post(serverURL+"api/quit", "application/json", strings.NewReader("{}"))
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("OfficeFlow answered %s", response.Status)
+	}
+	return nil
 }
 
 func officeFlowAnswers(timeout time.Duration) bool {
@@ -204,25 +237,93 @@ func officeFlowAnswers(timeout time.Duration) bool {
 	return response.StatusCode == http.StatusOK && strings.Contains(string(body), `"service":"officeflow"`)
 }
 
-func openWhenReady(stopped <-chan struct{}) {
-	for i := 0; i < 120; i++ {
-		select {
-		case <-stopped:
-			return
-		case <-time.After(500 * time.Millisecond):
-		}
-		if officeFlowAnswers(time.Second) {
-			openBrowser(serverURL)
-			return
-		}
+func setupRequired() (bool, error) {
+	client := http.Client{Timeout: 5 * time.Second}
+	response, err := client.Get(serverURL + "api/setup")
+	if err != nil {
+		return false, err
 	}
+	defer response.Body.Close()
+	var status struct {
+		Required bool `json:"required"`
+	}
+	err = json.NewDecoder(io.LimitReader(response.Body, 4096)).Decode(&status)
+	return status.Required, err
+}
+
+// waitUntilReady reports true once the server answers, false on timeout or if Java exits.
+func waitUntilReady(timeout time.Duration, exited <-chan struct{}) <-chan bool {
+	result := make(chan bool, 1)
+	go func() {
+		deadline := time.Now().Add(timeout)
+		for time.Now().Before(deadline) {
+			select {
+			case <-exited:
+				result <- false
+				return
+			case <-time.After(300 * time.Millisecond):
+			}
+			if officeFlowAnswers(time.Second) {
+				result <- true
+				return
+			}
+		}
+		result <- false
+	}()
+	return result
+}
+
+func portFree(address string) bool {
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		return false
+	}
+	listener.Close()
+	return true
 }
 
 func openBrowser(url string) {
+	if folder := os.Getenv("OFFICEFLOW_TEST_OUTPUT"); folder != "" {
+		record(folder, "opened-url.txt", url)
+		return
+	}
 	if os.Getenv("OFFICEFLOW_NO_BROWSER") != "" {
 		return
 	}
 	shellOpen(url)
+}
+
+// failure shows a readable error and returns exit code 1.
+func failure(summary, details string) int {
+	text := summary
+	if details != "" {
+		text += "\n\n" + details
+	}
+	if folder := os.Getenv("OFFICEFLOW_TEST_OUTPUT"); folder != "" {
+		record(folder, "error.txt", text)
+		return 1
+	}
+	messageBox(text, true)
+	return 1
+}
+
+func notify(text string) {
+	if folder := os.Getenv("OFFICEFLOW_TEST_OUTPUT"); folder != "" {
+		record(folder, "notice.txt", text)
+		return
+	}
+	messageBox(text, false)
+}
+
+// record writes a line for automated tests (OFFICEFLOW_TEST_OUTPUT) instead of a dialog or a
+// browser window, so a test machine never waits on a message box.
+func record(folder, name, text string) {
+	file, err := os.OpenFile(filepath.Join(folder, name), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	fmt.Fprintln(file, strings.ReplaceAll(text, "\n", " | "))
 }
 
 func exists(path string) bool {
@@ -230,13 +331,42 @@ func exists(path string) bool {
 	return err == nil
 }
 
-func fail(format string, arguments ...any) int {
-	fmt.Println()
-	fmt.Printf(format+"\n", arguments...)
-	if stdinIsConsole() {
-		fmt.Println()
-		fmt.Println("Press Enter to close this window.")
-		bufio.NewReader(os.Stdin).ReadString('\n')
+// lastLines keeps the last few lines Java printed, for the error message.
+type lastLines struct {
+	mu      sync.Mutex
+	limit   int
+	partial []byte
+	lines   []string
+}
+
+func (l *lastLines) Write(data []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.partial = append(l.partial, data...)
+	for {
+		index := bytes.IndexByte(l.partial, '\n')
+		if index < 0 {
+			break
+		}
+		line := strings.TrimRight(string(l.partial[:index]), "\r")
+		l.partial = l.partial[index+1:]
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		l.lines = append(l.lines, line)
+		if len(l.lines) > l.limit {
+			l.lines = l.lines[len(l.lines)-l.limit:]
+		}
 	}
-	return 1
+	return len(data), nil
+}
+
+func (l *lastLines) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	lines := append([]string(nil), l.lines...)
+	if rest := strings.TrimSpace(string(l.partial)); rest != "" {
+		lines = append(lines, rest)
+	}
+	return strings.Join(lines, "\n")
 }

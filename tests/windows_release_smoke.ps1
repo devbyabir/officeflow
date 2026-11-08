@@ -1,6 +1,7 @@
 # Tests the release ZIP on a disposable Windows machine (CI runner) the way a person uses it:
-# extract into a folder with spaces, first run of OfficeFlow.exe through its password prompt,
-# add a supply, restart through a shell launch (as a double-click does), replace the extracted
+# extract into a folder with spaces, first run of OfficeFlow.exe through its browser setup
+# screen (one-time token), add a supply, quit cleanly, restart through a shell launch (as a
+# double-click does), replace the extracted
 # folder, and open the same workspace from another copy. System Java and Maven are removed from
 # PATH, and LOCALAPPDATA points to a disposable folder.
 param([Parameter(Mandatory = $true)][string]$Zip)
@@ -8,7 +9,7 @@ $ErrorActionPreference = "Stop"
 $temp = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
 $work = Join-Path $temp "OfficeFlow release test"
 $base = "http://127.0.0.1:8080"
-$adminPassword = "Release prompt password 7"
+$adminPassword = "Release setup password 7"
 $launched = @()
 
 function Notice([string]$Message) { Write-Output "::notice title=Windows ZIP test::$Message" }
@@ -71,16 +72,29 @@ function Start-Package([string]$Folder) {
   return $process
 }
 
-# Ctrl+C cannot be sent to another console here, so wait past H2's one-second write delay and
-# end the launcher's process tree. People stop OfficeFlow with Ctrl+C or by closing the window.
+# Quits like the "Quit OfficeFlow" Start menu shortcut: OfficeFlow.exe --quit asks the running
+# OfficeFlow to stop cleanly and waits for it.
 function Stop-Package($Process) {
-  Start-Sleep -Seconds 3
-  taskkill /PID $Process.Id /T /F | Out-Null
-  $Process.WaitForExit()
+  $folder = Split-Path (Get-CimInstance Win32_Process -Filter "ProcessId = $($Process.Id)").ExecutablePath
+  $quit = Start-Process -FilePath (Join-Path $folder "OfficeFlow.exe") -ArgumentList "--quit" -WorkingDirectory $env:SystemRoot -Wait -PassThru
+  Assert ($quit.ExitCode -eq 0) "OfficeFlow.exe --quit exits with code 0 (got $($quit.ExitCode))"
+  Assert ($Process.WaitForExit(30000)) "OfficeFlow.exe exits after quitting"
+  Assert ($Process.ExitCode -eq 0) "OfficeFlow.exe reports a clean stop (exit code $($Process.ExitCode))"
   for ($i = 0; $i -lt 40; $i++) {
     try { Invoke-RestMethod "$base/api/health" -TimeoutSec 1 | Out-Null; Start-Sleep -Milliseconds 250 } catch { return }
   }
-  throw "OfficeFlow still answers after stopping"
+  throw "OfficeFlow still answers after quitting"
+}
+
+# The address OfficeFlow.exe opened most recently, once it has opened $Count addresses in all.
+function Wait-Opened([int]$Count) {
+  $file = Join-Path $output "opened-url.txt"
+  for ($i = 0; $i -lt 80; $i++) {
+    $lines = @(if (Test-Path $file) { Get-Content $file })
+    if ($lines.Count -ge $Count) { return $lines[-1] }
+    Start-Sleep -Milliseconds 250
+  }
+  throw "OfficeFlow.exe did not open the browser (address $Count)"
 }
 
 function Get-Supplies([string]$Token) { @((Invoke-Api "/api/state" -Token $Token).supplies | ForEach-Object { $_.name }) }
@@ -99,7 +113,10 @@ Get-ChildItem Env: | Where-Object { $_.Name -match '^(JAVA_HOME|JDK_HOME|JRE_HOM
 Assert (-not (Get-Command java -ErrorAction SilentlyContinue)) "no java on PATH for the launcher"
 Assert (-not (Get-Command mvn -ErrorAction SilentlyContinue)) "no Maven on PATH for the launcher"
 $env:LOCALAPPDATA = Join-Path $work "LocalAppData"
-$env:OFFICEFLOW_NO_BROWSER = "1"
+# OfficeFlow.exe records the browser address and any message here instead of opening them.
+$output = Join-Path $work "Launcher output"
+New-Item -ItemType Directory -Force $output | Out-Null
+$env:OFFICEFLOW_TEST_OUTPUT = $output
 $database = Join-Path $env:LOCALAPPDATA "OfficeFlow\officeflow.mv.db"
 New-Item -ItemType Directory -Force $env:LOCALAPPDATA | Out-Null
 
@@ -130,16 +147,15 @@ try {
   Notice ("Extracted to '$folder' (path with spaces): OfficeFlow.exe present, no script launchers, no Microsoft runtime files; " +
     "OfficeFlow.exe signature: $($launcherSignature.Status); other EXE/DLL files not validly signed: $($otherUnsigned.Count)")
 
-  # First run through OfficeFlow.exe's own password prompt. The answers arrive on standard input,
-  # like typing, never as an argument or environment variable.
-  $answers = Join-Path $work "answers.txt"
-  [IO.File]::WriteAllText($answers, "$adminPassword`r`n$adminPassword`r`n")
-  $output = Join-Path $work "first-run.log"
-  $process = Start-Process -FilePath (Join-Path $folder "OfficeFlow.exe") -WorkingDirectory $env:SystemRoot -NoNewWindow -PassThru `
-    -RedirectStandardInput $answers -RedirectStandardOutput $output -RedirectStandardError "$output.err"
-  $launched += $process
-  Wait-Ready
+  # First run: OfficeFlow.exe opens the browser on the setup screen with a one-time token.
+  $process = Start-Package $folder
   $tree = Assert-ProcessTree $process
+  $opened = Wait-Opened 1
+  Assert ($opened -match '^http://127\.0\.0\.1:8080/#setup=([A-Za-z0-9_-]{32,128})$') "the first run opens the setup screen ($opened)"
+  $setupToken = $Matches[1]
+  Assert ((Invoke-Api "/api/setup").status -eq "ready") "setup is waiting for the administrator password"
+  Invoke-Api "/api/setup" @{ token = $setupToken; password = $adminPassword; confirmPassword = $adminPassword } | Out-Null
+  Assert ((Invoke-Api "/api/setup").status -eq "done") "setup closes after the first administrator"
   Assert (Test-Path -LiteralPath $database) "the workspace is created at $database"
   Assert (-not (Test-Path -LiteralPath (Join-Path $folder "data"))) "nothing is stored in the extracted folder"
   $page = Invoke-WebRequest "$base/" -UseBasicParsing
@@ -149,12 +165,9 @@ try {
       name = "Release check paper"; category = "Paper & print"; quantity = "12"; threshold = "2"; unit = "reams" } } $admin | Out-Null
   Assert ((Get-Supplies $admin) -contains "Release check paper") "the new supply is listed"
   Stop-Package $process
-  # OfficeFlow.exe held the answers file open as its standard input until it stopped.
-  Remove-Item $answers
-  $log = (Get-Content -Raw $output) + (Get-Content -Raw "$output.err")
-  Assert ($log -match "Choose a password for the administrator account") "the first run asked for the admin password"
-  Assert (-not $log.Contains($adminPassword)) "the admin password does not appear in the launcher's output"
-  Notice "First run: OfficeFlow.exe asked for the admin password (typed via standard input), created $database, supply added; password on no command line and not in the output; process tree: $tree"
+  $log = Get-Content -Raw (Join-Path $env:LOCALAPPDATA "OfficeFlow\launcher.log")
+  Assert (-not $log.Contains($adminPassword) -and -not $log.Contains($setupToken)) "neither the password nor the setup token appears in launcher.log"
+  Notice "First run: OfficeFlow.exe opened the setup screen with a one-time token, the admin password was set there, $database created, supply added, quit cleanly; password and token on no command line or log; process tree: $tree"
 
   # Restart through a shell launch, as a double-click does.
   $process = Start-Package $folder
@@ -162,7 +175,8 @@ try {
   $admin = Login
   Assert ((Get-Supplies $admin) -contains "Release check paper") "the supply survives a restart"
   Invoke-Api "/api/login" @{ id = "001"; password = "wrong-password-123" } -Expected 403 | Out-Null
-  Notice "Restart via shell launch of OfficeFlow.exe: no password prompt, same admin password, supply still present; process tree: $tree"
+  Assert ((Wait-Opened 2) -eq "$base/") "a returning start opens sign-in, not setup"
+  Notice "Restart via shell launch of OfficeFlow.exe: sign-in (no setup link), same admin password, supply still present; process tree: $tree"
 
   # A second launch while OfficeFlow runs reports it and exits on its own.
   $again = Start-Process -FilePath (Join-Path $folder "OfficeFlow.exe") -WorkingDirectory $env:SystemRoot -PassThru

@@ -31,7 +31,10 @@ jobs:
           cache: false
       # The launcher's Visual C++ checks run here on real Windows against folders of copied
       # files (missing, outdated, current); the runner itself always has a current runtime.
-      - name: Test and build OfficeFlow.exe (x64, no cgo)
+      # OfficeFlow.exe is a GUI-subsystem program (-H windowsgui), so Windows opens no console
+      # window for it. Its icon, version details and manifest come from resources/officeflow.rc,
+      # compiled with the runner's MinGW windres into a .syso file that go build links.
+      - name: Test and build OfficeFlow.exe (x64, no cgo, no console, embedded icon)
         shell: pwsh
         working-directory: packaging/windows/launcher
         env:
@@ -39,13 +42,27 @@ jobs:
           GOARCH: amd64
           CGO_ENABLED: "0"
         run: |
+          $windres = (Get-Command windres -ErrorAction SilentlyContinue).Source
+          if (-not $windres) {
+            $windres = @("C:\mingw64\bin\windres.exe", "C:\msys64\mingw64\bin\windres.exe", "C:\msys64\ucrt64\bin\windres.exe") |
+              Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $windres) { throw "windres (MinGW) was not found on this runner" }
+          $env:PATH = "$(Split-Path $windres);$env:PATH"  # windres runs MinGW's C preprocessor
+          $version = ([xml](Get-Content -Raw ../../../server/pom.xml)).project.version
+          $parts = @($version -split '[.-]' | Where-Object { $_ -match '^\d+$' } | Select-Object -First 4)
+          while ($parts.Count -lt 4) { $parts += "0" }
+          Set-Content -Encoding ascii version.h "#define VERSION_COMMA $($parts -join ',')`n#define VERSION_TEXT `"$version`""
+          & $windres -O coff -F pe-x86-64 -I . -i resources/officeflow.rc -o rsrc_windows_amd64.syso
+          if ($LASTEXITCODE -ne 0) { throw "windres failed" }
+          Write-Output "::notice title=Launcher resources::icon packaging/windows/icon/officeflow.ico, version $version, manifest (asInvoker, per-monitor DPI), compiled with $windres"
           go vet ./...
           $tests = go test -v -count=1 ./... 2>&1
           $tests | Write-Output
           if ($LASTEXITCODE -ne 0) { throw "Launcher tests failed" }
           $summary = ($tests | Select-String -Pattern '^--- (PASS|FAIL|SKIP)' | ForEach-Object { $_.Line.Trim() }) -join '%0A'
           Write-Output "::notice title=Launcher unit tests on real Windows with simulated runtime folders::$summary"
-          go build -trimpath -ldflags "-s -w" -o "$env:RUNNER_TEMP\launcher\OfficeFlow.exe" .
+          go build -trimpath -ldflags "-s -w -H windowsgui" -o "$env:RUNNER_TEMP\launcher\OfficeFlow.exe" .
       # Stages the program folder (dist\OfficeFlow-<version>-windows-x64) that the installer packs.
       - name: Stage the program folder with the bundled Java runtime
         shell: pwsh
@@ -53,9 +70,9 @@ jobs:
       - name: Test the program folder without system Java or Maven
         shell: pwsh
         run: ./tests/windows_release_smoke.ps1 -Zip (Get-ChildItem dist/*.zip).FullName
-      - name: Test the launcher in a real console (masking, browser, Ctrl+C)
+      - name: Test the windowless launcher (no console, setup link, quit, readable errors)
         shell: pwsh
-        run: ./tests/windows_launcher_console.ps1 -Zip (Get-ChildItem dist/*.zip).FullName
+        run: ./tests/windows_launcher_gui.ps1 -Zip (Get-ChildItem dist/*.zip).FullName
       - name: Install Inno Setup
         shell: pwsh
         run: |
@@ -86,7 +103,7 @@ jobs:
           Write-Output "::notice title=Signatures::$($signatures -join '; ')"
           "SETUP=$($setup.FullName)" >> $env:GITHUB_ENV
           "UPGRADE_SETUP=$(Join-Path $upgrade 'OfficeFlow-Setup-1.0.1-x64.exe')" >> $env:GITHUB_ENV
-      - name: Test install, Start menu launch, saving an item, restart, upgrade and uninstall
+      - name: Test install, Start menu setup, saving an item, quit, restart, upgrade and uninstall
         shell: pwsh
         run: ./tests/windows_installer_test.ps1 -Installer $env:SETUP -UpgradeInstaller $env:UPGRADE_SETUP
       - name: Upload installer and checksum

@@ -24,22 +24,68 @@ var (
 	versionDLL                 = syscall.NewLazyDLL("version.dll")
 	shell32                    = syscall.NewLazyDLL("shell32.dll")
 	procGetSystemDirectory     = kernel32.NewProc("GetSystemDirectoryW")
-	procSetConsoleTitle        = kernel32.NewProc("SetConsoleTitleW")
-	procSetConsoleMode         = kernel32.NewProc("SetConsoleMode")
 	procGetFileVersionInfoSize = versionDLL.NewProc("GetFileVersionInfoSizeW")
 	procGetFileVersionInfo     = versionDLL.NewProc("GetFileVersionInfoW")
 	procVerQueryValue          = versionDLL.NewProc("VerQueryValueW")
 	procShellExecute           = shell32.NewProc("ShellExecuteW")
 	procCreateMutex            = kernel32.NewProc("CreateMutexW")
+	procOpenMutex              = kernel32.NewProc("OpenMutexW")
+	user32                     = syscall.NewLazyDLL("user32.dll")
+	procMessageBox             = user32.NewProc("MessageBoxW")
 )
 
-// holdInstanceMutex creates the "OfficeFlow.Launcher" mutex for as long as this process runs.
-// The installer's AppMutex setting uses it to ask the user to close OfficeFlow before an
-// upgrade or uninstall, instead of replacing files under a running Java.
-func holdInstanceMutex() {
-	if name, err := syscall.UTF16PtrFromString("OfficeFlow.Launcher"); err == nil {
-		procCreateMutex.Call(0, 0, uintptr(unsafe.Pointer(name)))
+const instanceMutex = "OfficeFlow.Launcher"
+
+// holdInstanceMutex creates the "OfficeFlow.Launcher" mutex for as long as this process runs,
+// and reports false if another OfficeFlow.exe already holds it. Setup and uninstall use it to
+// see that OfficeFlow is running and ask it to quit before files are replaced.
+func holdInstanceMutex() bool {
+	name, err := syscall.UTF16PtrFromString(instanceMutex)
+	if err != nil {
+		return true
 	}
+	handle, _, callErr := procCreateMutex.Call(0, 0, uintptr(unsafe.Pointer(name)))
+	const errorAlreadyExists = 183
+	if handle != 0 && callErr == syscall.Errno(errorAlreadyExists) {
+		syscall.CloseHandle(syscall.Handle(handle))
+		return false
+	}
+	return true
+}
+
+// instanceRunning reports whether some OfficeFlow.exe currently holds the mutex.
+func instanceRunning() bool {
+	name, err := syscall.UTF16PtrFromString(instanceMutex)
+	if err != nil {
+		return false
+	}
+	const synchronize = 0x00100000
+	handle, _, _ := procOpenMutex.Call(synchronize, 0, uintptr(unsafe.Pointer(name)))
+	if handle == 0 {
+		return false
+	}
+	syscall.CloseHandle(syscall.Handle(handle))
+	return true
+}
+
+// messageBox shows OfficeFlow's only dialogs: a startup error or a quit confirmation.
+func messageBox(text string, isError bool) {
+	const (
+		iconError       = 0x00000010
+		iconInformation = 0x00000040
+		setForeground   = 0x00010000
+		topmost         = 0x00040000
+	)
+	flags := uintptr(iconInformation | setForeground | topmost)
+	if isError {
+		flags = iconError | setForeground | topmost
+	}
+	body, err := syscall.UTF16PtrFromString(text)
+	if err != nil {
+		return
+	}
+	title, _ := syscall.UTF16PtrFromString("OfficeFlow")
+	procMessageBox.Call(0, uintptr(unsafe.Pointer(body)), uintptr(unsafe.Pointer(title)), flags)
 }
 
 type fileVersion [4]uint16
@@ -120,28 +166,6 @@ func systemDirectory() string {
 		return filepath.Join(os.Getenv("SystemRoot"), "System32")
 	}
 	return syscall.UTF16ToString(buffer[:n])
-}
-
-func setConsoleTitle(title string) {
-	if text, err := syscall.UTF16PtrFromString(title); err == nil {
-		procSetConsoleTitle.Call(uintptr(unsafe.Pointer(text)))
-	}
-}
-
-func stdinIsConsole() bool {
-	var mode uint32
-	return syscall.GetConsoleMode(syscall.Stdin, &mode) == nil
-}
-
-// hideConsoleInput turns off echo for the console input and returns a function that restores it.
-func hideConsoleInput() func() {
-	const enableEchoInput = 0x0004
-	var mode uint32
-	if syscall.GetConsoleMode(syscall.Stdin, &mode) != nil {
-		return func() {}
-	}
-	procSetConsoleMode.Call(uintptr(syscall.Stdin), uintptr(mode&^enableEchoInput))
-	return func() { procSetConsoleMode.Call(uintptr(syscall.Stdin), uintptr(mode)) }
 }
 
 // shellOpen opens a URL in the default browser through the Windows shell (no cmd.exe).

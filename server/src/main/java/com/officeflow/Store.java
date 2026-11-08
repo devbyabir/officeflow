@@ -21,26 +21,58 @@ public final class Store implements AutoCloseable {
    * administrator yet; it must then meet the password policy. Existing workspaces ignore it.
    */
   public Store(String url, String adminPassword) throws SQLException {
+    this(url, adminPassword, false);
+  }
+
+  /**
+   * With {@code allowSetup}, a workspace without an administrator opens without one when no
+   * valid {@code adminPassword} is given; the first administrator is then created once through
+   * {@link #createFirstAdministrator}, from the browser's setup screen.
+   */
+  public Store(String url, String adminPassword, boolean allowSetup) throws SQLException {
     connection = DriverManager.getConnection(url, "sa", "");
     try {
+      boolean create = false;
       if (!hasAdministrator()) {
         try {
           Accounts.validatePassword(adminPassword == null ? "" : adminPassword);
+          create = true;
         } catch (IllegalArgumentException exception) {
-          throw new IllegalStateException(
-              "A new workspace needs an administrator password of 12-120 characters in"
-                  + " OFFICEFLOW_ADMIN_PASSWORD.");
+          if (!allowSetup)
+            throw new IllegalStateException(
+                "A new workspace needs an administrator password of 12-120 characters in"
+                    + " OFFICEFLOW_ADMIN_PASSWORD.");
         }
       }
       createSchema();
-      if (credential("001") == null) addCredential("001", "admin", adminPassword, false);
+      if (create && credential("001") == null) addCredential("001", "admin", adminPassword, false);
     } catch (SQLException | RuntimeException exception) {
       connection.close();
       throw exception;
     }
   }
 
-  private boolean hasAdministrator() throws SQLException {
+  /**
+   * Creates administrator 001 once. Fails if any administrator already exists, so a setup
+   * request can never replace an existing account or its password.
+   */
+  public void createFirstAdministrator(String password) throws SQLException {
+    Accounts.validatePassword(password == null ? "" : password);
+    connection.setAutoCommit(false);
+    try {
+      if (hasAdministrator()) throw new IllegalStateException("OfficeFlow is already set up.");
+      addCredential("001", "admin", password, false);
+      connection.commit();
+    } catch (SQLException | RuntimeException exception) {
+      connection.rollback();
+      throw exception;
+    } finally {
+      connection.setAutoCommit(true);
+    }
+  }
+
+  /** True once administrator 001 exists. */
+  public boolean hasAdministrator() throws SQLException {
     try (Statement statement = connection.createStatement();
         ResultSet tables =
             statement.executeQuery(

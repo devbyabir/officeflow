@@ -30,6 +30,13 @@
   --chart-issued: var(--success);
   --chart-rejected: var(--danger);
   --chart-cancelled: var(--cancelled);
+  /* Release polish: table header, emphasis and feedback colours. */
+  --head-ink: color-mix(in srgb, var(--ink) 82%, var(--muted));
+  --head-bg: color-mix(in srgb, var(--bg) 80%, var(--line));
+  --row-hover: color-mix(in srgb, var(--primary) 4%, var(--surface));
+  --saved: color-mix(in srgb, var(--success) 16%, var(--surface));
+  --lift: 0 6px 18px color-mix(in srgb, var(--sidebar) 10%, transparent);
+  --auth-bg: radial-gradient(circle at 30% 20%, color-mix(in srgb, var(--primary) 18%, var(--sidebar)), var(--sidebar) 70%);
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -51,4 +58,8 @@
   --danger-soft: #3d1e21;
   --cancelled: #b4bdcc;
   --cancelled-soft: #252d3a;
+  --head-bg: color-mix(in srgb, var(--surface) 60%, var(--bg));
+  --row-hover: color-mix(in srgb, var(--primary) 7%, var(--surface));
+  --saved: color-mix(in srgb, var(--success) 18%, var(--surface));
+  --lift: 0 6px 18px color-mix(in srgb, black 35%, transparent);
 }

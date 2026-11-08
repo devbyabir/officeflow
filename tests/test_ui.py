@@ -347,5 +347,113 @@ class JavaAccountBrowserTests(unittest.TestCase):
         self.assertIsNone(page.evaluate("sessionStorage.getItem('officeflow-token')"))
 
 
+@unittest.skipUnless(os.environ.get("OFFICEFLOW_UI_JAVA") == "1", "Set OFFICEFLOW_UI_JAVA=1 after building Java")
+class JavaFirstRunBrowserTests(unittest.TestCase):
+    """The first run as OfficeFlow.exe opens it: setup screen, sign-in, an item, then Quit."""
+    TOKEN = "UiSetupToken_" + "x" * 30
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory(prefix="officeflow-ui-setup-")
+        cls.log = Path(cls.temp.name) / "server.log"
+        cls.stream = cls.log.open("w", encoding="utf-8")
+        classpath = os.environ.get("OFFICEFLOW_CP", os.pathsep.join([
+            str(ROOT / "server/target/classes"), str(ROOT / "server/target/dependency/*")]))
+        env = {k: v for k, v in os.environ.items() if k != "OFFICEFLOW_ADMIN_PASSWORD"}
+        env["OFFICEFLOW_SETUP_TOKEN"] = cls.TOKEN
+        cls.process = subprocess.Popen([os.environ.get("JAVA", "java"),
+            "-Dofficeflow.port=0", "-Dofficeflow.browserSetup=true",
+            "-Dofficeflow.db=jdbc:h2:" + (Path(cls.temp.name) / "db").as_posix(),
+            "-Dofficeflow.site=" + str(ROOT / "docs/site"), "-cp", classpath, "com.officeflow.App"],
+            stdout=cls.stream, stderr=cls.stream, env=env, cwd=ROOT)
+        cls.addClassCleanup(cls.cleanup_server)
+        for _ in range(100):
+            content = cls.log.read_text(encoding="utf-8")
+            if "Press Ctrl+C to stop." in content:
+                cls.base = content.split("OfficeFlow: ", 1)[1].splitlines()[0]
+                break
+            if cls.process.poll() is not None:
+                raise AssertionError(content)
+            time.sleep(0.1)
+        else:
+            raise AssertionError("Java server did not start")
+        cls.playwright = sync_playwright().start()
+        cls.addClassCleanup(cls.playwright.stop)
+        cls.browser = cls.playwright.chromium.launch()
+        cls.addClassCleanup(cls.browser.close)
+
+    @classmethod
+    def cleanup_server(cls):
+        if cls.process.poll() is None:
+            cls.process.terminate()
+        cls.process.wait(timeout=10)
+        cls.stream.close()
+        cls.temp.cleanup()
+
+    def new_page(self, scheme="light"):
+        context = self.browser.new_context(viewport={"width": 1440, "height": 900},
+                                           color_scheme=scheme, reduced_motion="reduce")
+        self.addCleanup(context.close)
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        self.addCleanup(lambda: self.assertEqual(errors, [], "Uncaught browser errors"))
+        return page
+
+    def test_1_without_the_setup_link_nothing_can_be_created(self):
+        page = self.new_page()
+        page.goto(self.base)
+        dialog = page.get_by_role("dialog")
+        expect(dialog.get_by_role("heading", name="Set up OfficeFlow")).to_be_visible()
+        expect(dialog.get_by_role("alert")).to_contain_text("opened without OfficeFlow's setup link")
+        expect(dialog.get_by_label("Admin password")).to_have_count(0)
+        expect(dialog.get_by_role("button", name="Quit OfficeFlow")).to_be_visible()
+
+    def test_2_setup_sign_in_add_item_and_quit(self):
+        page = self.new_page("dark")
+        page.goto(self.base + "/#setup=" + self.TOKEN)
+        dialog = page.get_by_role("dialog")
+        expect(dialog.get_by_role("heading", name="Set up OfficeFlow")).to_be_visible()
+        # The token leaves the address bar at once and the screen cannot be dismissed.
+        self.assertEqual(page.url, self.base + "/")
+        page.keyboard.press("Escape")
+        expect(dialog.get_by_role("heading", name="Set up OfficeFlow")).to_be_visible()
+        expect(page.locator("#main")).to_be_hidden()
+        dialog.get_by_label("Admin password", exact=True).fill("ui-first-admin-pass")
+        dialog.get_by_label("Confirm password", exact=True).fill("ui-first-admin-typo")
+        dialog.get_by_role("button", name="Create administrator").click()
+        expect(dialog.locator(".form-error")).to_contain_text("do not match")
+        dialog.get_by_label("Confirm password", exact=True).fill("ui-first-admin-pass")
+        dialog.get_by_role("button", name="Create administrator").click()
+        # Returning to sign-in with the administrator ID filled in.
+        expect(dialog.get_by_role("heading", name="Welcome to OfficeFlow")).to_be_visible()
+        expect(dialog.get_by_label("Account ID", exact=True)).to_have_value("001")
+        self.assertIsNone(page.evaluate("sessionStorage.getItem('officeflow-setup')"))
+        dialog.get_by_label("Password", exact=True).fill("ui-first-admin-pass")
+        dialog.get_by_role("button", name="Sign in", exact=True).click()
+        expect(dialog).not_to_be_visible()
+        # A reload opens sign-in for a returning visitor, never setup again.
+        status = page.context.request.get(self.base + "/api/setup").json()
+        self.assertEqual(status, {"required": False, "status": "done"})
+        page.get_by_role("button", name="Add supply", exact=True).click()
+        dialog.get_by_label("Item name", exact=True).fill("First-run markers")
+        dialog.get_by_label("Quantity on hand", exact=True).fill("4")
+        dialog.get_by_role("button", name="Add supply", exact=True).click()
+        expect(page.locator("#toast")).to_contain_text("Saved “First-run markers”")
+        page.locator("#navigation").get_by_role("link", name="Supply inventory").click()
+        row = page.locator("#inventory-results tbody tr", has_text="First-run markers")
+        expect(row.locator(".item-detail-link")).to_have_text("First-run markers")
+        expect(row.locator(".qty-available")).to_have_text("4")
+        expect(row.locator(".qty-onhand")).to_have_text("4")
+        # Quit from the sidebar: the server stops cleanly and the page says so.
+        page.get_by_role("button", name="Quit OfficeFlow").click()
+        expect(dialog.get_by_role("heading", name="Quit OfficeFlow?")).to_be_visible()
+        dialog.get_by_role("button", name="Quit OfficeFlow").click()
+        expect(page.get_by_role("heading", name="OfficeFlow has stopped")).to_be_visible()
+        self.assertEqual(self.process.wait(timeout=20), 0)
+        self.assertIn("OfficeFlow stopped cleanly; the database is closed.",
+                      self.log.read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

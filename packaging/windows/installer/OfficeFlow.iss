@@ -40,10 +40,12 @@ OutputBaseFilename=OfficeFlow-Setup-{#AppVersion}-x64
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\icon\officeflow.ico
 UninstallDisplayIcon={app}\OfficeFlow.exe
 UninstallDisplayName=OfficeFlow
-; OfficeFlow.exe holds this mutex while it runs, so setup and uninstall ask to close it first.
-AppMutex=OfficeFlow.Launcher
+; OfficeFlow runs without a window, so instead of asking the user to close it, setup and
+; uninstall ask it to quit cleanly (see StopOfficeFlow below). OfficeFlow.exe holds the
+; "OfficeFlow.Launcher" mutex while it runs.
 CloseApplications=no
 SetupLogging=yes
 #ifdef SignTool
@@ -63,8 +65,10 @@ Type: filesandordirs; Name: "{app}\app"
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-Name: "{autoprograms}\OfficeFlow"; Filename: "{app}\OfficeFlow.exe"; WorkingDir: "{app}"; Comment: "Start OfficeFlow"
-Name: "{autodesktop}\OfficeFlow"; Filename: "{app}\OfficeFlow.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+; The icon embedded in OfficeFlow.exe (packaging/windows/icon/officeflow.ico).
+Name: "{autoprograms}\OfficeFlow"; Filename: "{app}\OfficeFlow.exe"; WorkingDir: "{app}"; IconFilename: "{app}\OfficeFlow.exe"; IconIndex: 0; Comment: "Open OfficeFlow in your browser"
+Name: "{autoprograms}\Quit OfficeFlow"; Filename: "{app}\OfficeFlow.exe"; Parameters: "--quit"; WorkingDir: "{app}"; IconFilename: "{app}\OfficeFlow.exe"; IconIndex: 0; Comment: "Stop OfficeFlow on this computer; your workspace is saved"
+Name: "{autodesktop}\OfficeFlow"; Filename: "{app}\OfficeFlow.exe"; WorkingDir: "{app}"; IconFilename: "{app}\OfficeFlow.exe"; IconIndex: 0; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\OfficeFlow.exe"; WorkingDir: "{app}"; Description: "Start OfficeFlow now"; Flags: nowait postinstall skipifsilent
@@ -139,4 +143,53 @@ begin
   Result := True;
   if (CurPageID = wpReady) and not VisualCppRuntimeOK then
     InstallVisualCppRuntime;
+end;
+
+{ OfficeFlow runs without a window. Before files are replaced or removed, ask a running
+  OfficeFlow to quit cleanly through its local address (as its "Quit OfficeFlow" button does),
+  then wait until OfficeFlow.exe has exited. Returns False if it is still running. }
+function StopOfficeFlow(Silent: Boolean): Boolean;
+var
+  Request: Variant;
+  Waited: Integer;
+begin
+  Result := not CheckForMutexes('OfficeFlow.Launcher');
+  if Result then
+    exit;
+  if not Silent then
+    if MsgBox('OfficeFlow is running. Setup will stop it first; your workspace is saved.' + #13#10#13#10 +
+         'Continue?', mbConfirmation, MB_OKCANCEL) <> IDOK then
+      exit;
+  try
+    Request := CreateOleObject('WinHttp.WinHttpRequest.5.1');
+    Request.Open('POST', 'http://127.0.0.1:8080/api/quit', False);
+    Request.SetRequestHeader('Content-Type', 'application/json');
+    Request.Send('{}');
+    Log('Asked OfficeFlow to quit: HTTP ' + IntToStr(Request.Status));
+  except
+    Log('Could not ask OfficeFlow to quit: ' + GetExceptionMessage);
+  end;
+  Waited := 0;
+  while CheckForMutexes('OfficeFlow.Launcher') and (Waited < 30000) do
+  begin
+    Sleep(250);
+    Waited := Waited + 250;
+  end;
+  Result := not CheckForMutexes('OfficeFlow.Launcher');
+  Log('OfficeFlow stopped before file changes: ' + IntToStr(Ord(Result)));
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if not StopOfficeFlow(WizardSilent) then
+    Result := 'OfficeFlow is still running. Use "Quit OfficeFlow" in OfficeFlow or the Start menu, then run setup again.';
+end;
+
+function InitializeUninstall: Boolean;
+begin
+  Result := StopOfficeFlow(UninstallSilent);
+  if not Result then
+    SuppressibleMsgBox('OfficeFlow is still running. Use "Quit OfficeFlow" in OfficeFlow or the Start menu, ' +
+      'then uninstall again.', mbError, MB_OK, IDOK);
 end;

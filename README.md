@@ -53,16 +53,20 @@ installed first. It needs Windows 10 or 11 (x64).
    administrator rights needed). If the Microsoft Visual C++ Redistributable
    (x64) is missing, setup offers to download Microsoft's official installer
    from Microsoft; Windows then asks for administrator permission.
-3. Open **OfficeFlow** from the Start menu. On the first start, choose the
-   administrator password (12–120 characters; typing is hidden). OfficeFlow
-   opens **http://127.0.0.1:8080** in your browser; sign in with account ID **`001`**.
+3. Open **OfficeFlow** from the Start menu. It starts in the background (no
+   window) and opens **http://127.0.0.1:8080** in your browser. On the first
+   start, the **Set up OfficeFlow** screen asks for the administrator password
+   (12–120 characters). That screen works only on this computer, for 15 minutes,
+   and only once. Then sign in with account ID **`001`**.
 
-Keep the OfficeFlow window open while you use it; press `Ctrl+C` or close the
-window to stop. The workspace is saved in
+To stop OfficeFlow, use **Quit OfficeFlow** in the sidebar (or on the sign-in
+screen), or the **Quit OfficeFlow** Start menu shortcut. Closing the browser tab
+leaves OfficeFlow running; open it from the Start menu to get back. If OfficeFlow
+cannot start, it shows a message explaining why. The workspace is saved in
 `%LOCALAPPDATA%\OfficeFlow\officeflow.mv.db`, outside the program folder, so
-installing a newer version or uninstalling keeps it. To update, run the newer
-setup while OfficeFlow is stopped. `Quick Start.txt` in the program folder covers
-backups and common problems.
+installing a newer version or uninstalling keeps it. Running a newer setup while
+OfficeFlow is open stops it cleanly first. `Quick Start.txt` in the program
+folder covers backups and common problems.
 
 On macOS or Linux, run OfficeFlow from source (below).
 
@@ -140,7 +144,8 @@ explorer "$env:LOCALAPPDATA\OfficeFlow"
 
 ## Back up and restore
 
-Back up **with OfficeFlow stopped** (press `Ctrl+C` in its window first). A backup
+Back up **with OfficeFlow stopped** (use **Quit OfficeFlow**, or press `Ctrl+C`
+in its window when you run it from source). A backup
 is a copy of one file:
 
 ```powershell
@@ -320,22 +325,26 @@ python tests/test_ui.py
 They cover the sample workspace (themes, navigation, mobile layout, dialogs) and,
 with `OFFICEFLOW_UI_JAVA=1` after the Maven build (PowerShell:
 `$env:OFFICEFLOW_UI_JAVA="1"`), the Java workspace: connection errors with Retry,
-one-time temporary passwords, the forced password change, account controls and
-revoked sessions. CI runs all of these checks.
+one-time temporary passwords, the forced password change, account controls,
+revoked sessions, and the first run (Set up OfficeFlow, sign-in, adding an item,
+Quit). CI runs all of these checks.
 
 A separate Windows workflow runs `tests/windows_smoke.ps1` on a disposable runner.
 It follows this README's PowerShell commands: first launch, the
 `%LOCALAPPDATA%\OfficeFlow` database, reopening, checking a backup on port 8081
 and restoring it.
 
-The **Windows installer** workflow builds `OfficeFlow.exe` (Go, no cgo), a
-trimmed Java runtime from a pinned, checksum-verified Eclipse Temurin JDK, and
+The **Windows installer** workflow builds `OfficeFlow.exe` (Go, no cgo, a
+windowless GUI program with the icon from `packaging/windows/icon`), a trimmed
+Java runtime from a pinned, checksum-verified Eclipse Temurin JDK, and
 `OfficeFlow-Setup-<version>-x64.exe` with Inno Setup
-(`packaging/windows/installer/OfficeFlow.iss`). `tests/windows_installer_test.ps1`
+(`packaging/windows/installer/OfficeFlow.iss`). `tests/windows_launcher_gui.ps1`
+checks that no window appears while OfficeFlow starts, the one-time setup link,
+both ways to quit and the port-in-use message. `tests/windows_installer_test.ps1`
 then installs it on the runner, starts OfficeFlow from the Start menu shortcut,
-saves an inventory item, stops it with Ctrl+C, restarts it, checks that an upgrade
-is refused while OfficeFlow runs, upgrades it to a test build, and uninstalls it,
-keeping the workspace. On pushes to `windows-release` it puts the installer, the
+completes setup, saves an inventory item, quits with the **Quit OfficeFlow**
+shortcut, reopens it, upgrades it to a test build while it runs (setup stops it
+cleanly first), and uninstalls it, keeping the workspace. On pushes to `windows-release` it puts the installer, the
 Java runtime's source archive and the terms on a draft GitHub Release, which is
 never published automatically.
 

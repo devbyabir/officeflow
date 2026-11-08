@@ -33,7 +33,7 @@ final class Startup {
           "style.css",
           "theme.css",
           "polish.css",
-          "favicon.svg");
+          "officeflow-icon.svg");
 
   private final Map<String, String> environment;
   private final Path workingDirectory;

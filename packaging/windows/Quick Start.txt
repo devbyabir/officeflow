@@ -30,18 +30,21 @@ means you accept them.
 -------------------
 1. Run OfficeFlow-Setup-<version>-x64.exe and follow the steps. No
    administrator rights are needed for OfficeFlow itself.
-2. Open OfficeFlow from the Start menu.
-3. The first time, choose an administrator password (12-120 characters).
-   The administrator account ID is 001.
-4. Your browser opens http://127.0.0.1:8080. Sign in as 001.
+2. Open OfficeFlow from the Start menu. It runs in the background without a
+   window and opens http://127.0.0.1:8080 in your browser.
+3. The first time, the "Set up OfficeFlow" screen asks for an administrator
+   password (12-120 characters). It works only on this computer, for 15
+   minutes, and only once. The administrator account ID is 001.
+4. Sign in as 001.
 
-Keep the OfficeFlow window open while you use OfficeFlow.
+Closing the browser tab does not stop OfficeFlow. Open OfficeFlow from the
+Start menu again to get back to it.
 
 
 2. Stop OfficeFlow
 ------------------
-Click the OfficeFlow window and press Ctrl+C, or close the window. Your
-records are saved.
+Click "Quit OfficeFlow" in the sidebar (or on the sign-in screen), or open
+"Quit OfficeFlow" from the Start menu. Your records are saved.
 
 
 3. Teachers
@@ -76,8 +79,9 @@ backup into its place with the name officeflow.mv.db.
 
 6. Update to a newer version
 ----------------------------
-Stop OfficeFlow, then run the newer OfficeFlow-Setup-<version>-x64.exe. It
-replaces the program and keeps your workspace.
+Run the newer OfficeFlow-Setup-<version>-x64.exe. If OfficeFlow is open,
+setup stops it cleanly first. It replaces the program and keeps your
+workspace.
 
 
 If something goes wrong
@@ -85,15 +89,19 @@ If something goes wrong
 - "OfficeFlow needs the Microsoft Visual C++ Redistributable": install the
   X64 Visual C++ Redistributable from the Microsoft page shown, then start
   OfficeFlow again.
-- "Port 8080 is already in use": OfficeFlow may already be running in another
-  window. Use that window, or restart the PC.
-- "The database is already open in another OfficeFlow window": use the window
-  that is already open.
-- The browser says it cannot reach OfficeFlow: the OfficeFlow window was
-  closed. Start OfficeFlow again and press Retry in the browser.
-- Setup says OfficeFlow is running: stop OfficeFlow (Ctrl+C in its window),
-  then continue setup.
-- OfficeFlow closes at once: run the setup again to repair the installation.
+- "Another program is using port 8080": close that program, or restart the
+  PC, then open OfficeFlow again.
+- "The workspace is already open in another copy of OfficeFlow": quit the
+  other copy (for example one started from a ZIP), then open OfficeFlow again.
+- "This setup screen has expired": click Quit OfficeFlow, then open OfficeFlow
+  from the Start menu again for a new setup screen.
+- The browser says it cannot reach OfficeFlow: OfficeFlow was quit. Open it
+  from the Start menu and press Retry in the browser.
+- Setup says OfficeFlow is still running: use Quit OfficeFlow, then run setup
+  again.
+- Any other message when OfficeFlow starts: it names the problem and the file
+  with details (%LOCALAPPDATA%\OfficeFlow\launcher.log). If files are
+  missing, run the setup again to repair the installation.
 
 More help: https://github.com/devbyabir/officeflow
 Licences: LICENSE.txt and THIRD-PARTY-NOTICES.txt in the OfficeFlow program folder.

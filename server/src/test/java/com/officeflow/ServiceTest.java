@@ -295,6 +295,7 @@ public final class ServiceTest {
     }
 
     checkStartup(temp);
+    checkBrowserSetup(temp);
 
     try (var paths = Files.walk(temp)) {
       for (Path p : paths.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(p);
@@ -302,7 +303,49 @@ public final class ServiceTest {
     System.out.println(
         "Java JDBC service checks passed: admin password policy, temporary passwords, roles,"
             + " reservations released by reject/cancel, issue-once, CSV rollback, restart and"
-            + " legacy workspaces, startup path checks.");
+            + " legacy workspaces, startup path checks, one-time browser setup.");
+  }
+
+  /** The first administrator from the browser: once, policy-checked, never replacing one. */
+  private static void checkBrowserSetup(Path temp) throws Exception {
+    String url = "jdbc:h2:" + temp.resolve("setup").toAbsolutePath();
+    denied(() -> new Store(url, null)); // Without browser setup a password is still required.
+    try (Store store = new Store(url, null, true)) {
+      Service service = new Service(store);
+      check(service.setupRequired());
+      denied(() -> service.login("001", ADMIN_PASSWORD));
+      denied(() -> service.createFirstAdministrator("too short"));
+      check(service.setupRequired());
+      service.createFirstAdministrator(ADMIN_PASSWORD);
+      check(!service.setupRequired());
+      denied(() -> service.createFirstAdministrator("another-admin-password"));
+      service.login("001", ADMIN_PASSWORD);
+    }
+    // Reopening keeps the account; a password in the environment never replaces it.
+    try (Store store = new Store(url, "ignored-for-existing-workspace", true)) {
+      Service service = new Service(store);
+      check(!service.setupRequired());
+      service.login("001", ADMIN_PASSWORD);
+      denied(() -> service.login("001", "ignored-for-existing-workspace"));
+    }
+
+    java.time.Instant now = java.time.Instant.now();
+    SetupToken token = SetupToken.create(null, now);
+    check(SetupToken.valid(token.value()));
+    check(token.status(now) == SetupToken.Status.READY);
+    check(token.status(now.plus(SetupToken.LIFETIME)) == SetupToken.Status.EXPIRED);
+    check(!token.redeem(token.value(), now.plus(SetupToken.LIFETIME)));
+    check(!token.redeem("wrong", now));
+    check(token.redeem(token.value(), now));
+    check(!token.redeem(token.value(), now)); // One time only.
+    check(token.status(now) == SetupToken.Status.USED);
+    String chosen = "a".repeat(43), other = "b".repeat(43);
+    SetupToken guessed = SetupToken.create(chosen, now);
+    check(guessed.value().equals(chosen));
+    for (int i = 0; i < SetupToken.MAXIMUM_FAILURES; i++) check(!guessed.redeem(other, now));
+    check(guessed.status(now) == SetupToken.Status.LOCKED);
+    check(!guessed.redeem(chosen, now)); // Locked, even for the right token.
+    check(!SetupToken.create("short", now).value().equals("short")); // Weak tokens are replaced.
   }
 
   /** Path decisions made before H2 is opened. */

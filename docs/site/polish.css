@@ -393,3 +393,448 @@ html:has(meta[name="officeflow-mode"][content="java"]):not([data-java-ready])
 html:has(meta[name="officeflow-mode"][content="java"]) #download-officeflow {
   display: none;
 }
+
+/* ---- Release polish: inventory hierarchy, compact panels, setup and quit ---- */
+.brand-mark {
+  border: 0;
+  background: none;
+  border-radius: 10px;
+  width: 36px;
+  height: 36px;
+}
+.footer-mark {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+/* Inventory table: the item name leads, its ID is secondary, numbers line up. */
+.inventory-table thead {
+  background: var(--head-bg);
+}
+.inventory-table th {
+  color: var(--head-ink);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  height: 38px;
+}
+.inventory-table th[title] {
+  cursor: help;
+  text-decoration: underline dotted color-mix(in srgb, var(--muted) 60%, transparent);
+  text-underline-offset: 4px;
+}
+.inventory-table td {
+  height: 56px;
+  padding-block: var(--space-2);
+}
+.inventory-table tbody tr {
+  transition: background-color 0.15s ease;
+}
+.inventory-table tbody tr:hover {
+  background: var(--row-hover);
+}
+.inventory-table .num {
+  text-align: right;
+}
+.inventory-table th:last-child,
+.inventory-table td:last-child {
+  text-align: right;
+}
+.item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.inventory-table .item-detail-link {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.1px;
+  line-height: 20px;
+  color: var(--ink);
+}
+.inventory-table .item-id {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+  letter-spacing: 0.03em;
+}
+.inventory-table .item-icon {
+  width: 32px;
+  height: 32px;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+.inventory-table tr:hover .item-icon {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--line));
+}
+.inventory-table .category-text {
+  font-size: 13px;
+}
+.qty-available {
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--ink);
+}
+.qty-available.low {
+  color: var(--warning);
+}
+.qty-available.out {
+  color: var(--danger);
+}
+.qty-unit {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: 6px;
+}
+.qty-onhand {
+  font-size: 14px;
+  color: var(--muted);
+}
+.qty-reserved {
+  display: block;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--warning);
+}
+.inventory-table .badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px 3px 8px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+}
+.inventory-table .badge:before {
+  width: 6px;
+  height: 6px;
+}
+.row-action {
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+.inventory-table tr:hover .row-action {
+  color: var(--primary);
+}
+.row-action:hover {
+  transform: translate(1px, -1px);
+}
+tr.just-saved {
+  animation: row-saved 1.6s ease-out both;
+}
+@keyframes row-saved {
+  0%,
+  35% {
+    background: var(--saved);
+  }
+  100% {
+    background: transparent;
+  }
+}
+.filter-summary {
+  padding: 0 var(--space-4) var(--space-3);
+}
+.filter-summary > span {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+}
+.stock-note:before {
+  content: "·";
+  margin-right: var(--space-3);
+}
+
+/* Fewer, tighter boxes. */
+.inventory-panel .toolbar {
+  padding: var(--space-4) var(--space-4) var(--space-3);
+}
+.panel-heading {
+  padding: 18px 20px;
+}
+.metrics {
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+.metric {
+  padding: 14px 18px 16px;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+.metric:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--line));
+  box-shadow: var(--lift);
+  transform: translateY(-2px);
+}
+.metric-head {
+  color: var(--head-ink);
+  font-weight: 500;
+}
+.metric-value {
+  font-size: 28px;
+  margin: var(--space-1) 0 2px;
+}
+.metric-link {
+  right: 18px;
+  bottom: 16px;
+}
+.metric.warning .metric-value {
+  color: var(--warning);
+}
+.content-grid {
+  gap: var(--space-4);
+}
+.section-spacer {
+  margin-top: var(--space-4);
+}
+.right-column {
+  gap: var(--space-3);
+}
+.status-content {
+  padding: 0 20px 18px;
+}
+.restock .panel-heading {
+  padding-bottom: var(--space-2);
+}
+.restock-body,
+.activity {
+  padding: 0 20px;
+}
+.restock-item,
+.activity-entry {
+  padding: 10px 0;
+}
+.restock-footer {
+  padding: 12px 20px;
+}
+.activity-more {
+  margin: 4px 20px 16px;
+}
+.request-card {
+  padding: 12px 20px;
+}
+.table-bottom {
+  padding: 12px var(--space-4);
+}
+
+/* Motion: hover, dialogs and save feedback (all removed under reduced motion above). */
+.button {
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+.button.primary:hover {
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 30%, transparent);
+}
+.button:active {
+  transform: translateY(1px);
+}
+.nav-item {
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+dialog[open] {
+  animation: dialog-arrive 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+dialog[open]::backdrop {
+  animation: backdrop-arrive 0.2s ease both;
+}
+@keyframes dialog-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes backdrop-arrive {
+  from {
+    opacity: 0;
+  }
+}
+#toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-shadow: var(--lift);
+  transition:
+    opacity 0.2s ease,
+    transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+#toast.success {
+  border-color: color-mix(in srgb, var(--success) 40%, var(--line));
+}
+#toast.success:before {
+  content: "✓";
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+/* Setup and sign-in: a calm, branded screen instead of an empty workspace. */
+body.auth-screen .shell,
+body.auth-screen .sidebar {
+  visibility: hidden;
+}
+body.auth-screen {
+  background: var(--auth-bg);
+  min-height: 100vh;
+}
+dialog.auth-dialog {
+  width: min(460px, calc(100vw - 32px));
+}
+dialog.auth-dialog::backdrop {
+  background: transparent;
+}
+.auth-dialog .dialog-heading {
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-bottom: var(--space-4);
+}
+.dialog-logo {
+  width: 40px;
+  height: 40px;
+}
+.setup-account {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  background: var(--bg);
+}
+.setup-account .avatar {
+  width: 40px;
+  height: 40px;
+  font-size: 12px;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.setup-account strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+.setup-account small {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.field-hint {
+  margin: var(--space-3) 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.setup-problem {
+  padding: var(--space-4);
+  border-radius: var(--control-radius);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.setup-problem p {
+  margin: var(--space-2) 0 0;
+  color: var(--ink);
+}
+.button.quiet {
+  margin-right: auto;
+  border-color: transparent;
+  background: none;
+  color: var(--muted);
+}
+.button.quiet:hover {
+  color: var(--ink);
+  background: var(--hover);
+}
+
+/* Quit: in the sidebar, and the page shown once OfficeFlow has stopped. */
+.quit-button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--sidebar-line);
+  border-radius: var(--control-radius);
+  background: none;
+  color: var(--sidebar-text);
+  font-size: 13px;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+.quit-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+.quit-button:hover {
+  background: var(--sidebar-hover);
+  color: var(--white);
+}
+body.is-stopped .sidebar,
+body.is-stopped .topbar,
+body.is-stopped .demo-banner,
+body.is-stopped footer {
+  display: none;
+}
+body.is-stopped .shell {
+  margin-left: 0;
+}
+.stopped-view {
+  max-width: 440px;
+  margin: 18vh auto 0;
+  text-align: center;
+  color: var(--muted);
+}
+.stopped-view img {
+  margin: 0 auto var(--space-4);
+}
+.stopped-view h1 {
+  font-size: 24px;
+  color: var(--ink);
+  margin: 0 0 var(--space-3);
+}
+.stopped-view p {
+  margin: 0 0 var(--space-2);
+}
+@media (max-width: 760px) {
+  .stock-note {
+    display: none;
+  }
+  .inventory-table td {
+    height: 52px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .metric:hover,
+  .row-action:hover,
+  .button:active {
+    transform: none;
+  }
+}

@@ -3,10 +3,10 @@
 package main
 
 import (
-	"bufio"
-	"io"
+	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -63,39 +63,69 @@ func TestVersionOrder(t *testing.T) {
 	}
 }
 
-func TestPasswordPolicy(t *testing.T) {
-	cases := map[string]bool{
-		"short-pass1":               false, // 11 characters
-		"long-enough!":              true,  // 12 characters
-		strings.Repeat("a", 120):    true,
-		strings.Repeat("a", 121):    false,
-		strings.Repeat(" ", 15):     false,
-		strings.Repeat("😀", 6):      true, // 12 UTF-16 code units, as the server counts
-		strings.Repeat("😀", 5) + "a": false,
+func TestSetupTokenMatchesTheServerRule(t *testing.T) {
+	// The server accepts a launcher token only if it is 32-128 URL-safe characters.
+	rule := regexp.MustCompile(`^[A-Za-z0-9_-]{32,128}$`)
+	seen := map[string]bool{}
+	for i := 0; i < 20; i++ {
+		token, err := newSetupToken()
+		if err != nil || !rule.MatchString(token) || seen[token] {
+			t.Fatalf("bad token %q (%v)", token, err)
+		}
+		seen[token] = true
 	}
-	for password, want := range cases {
-		if got := validPassword(password); got != want {
-			t.Errorf("validPassword(%q) = %v, want %v", password, got, want)
+}
+
+func TestBrowserURL(t *testing.T) {
+	if got := browserURL(true, "abc"); got != "http://127.0.0.1:8080/#setup=abc" {
+		t.Fatalf("setup URL %q", got)
+	}
+	if got := browserURL(false, "abc"); got != "http://127.0.0.1:8080/" || strings.Contains(got, "abc") {
+		t.Fatalf("returning users must get the plain address, got %q", got)
+	}
+}
+
+func TestLastLinesKeepsTheEndOfJavaOutput(t *testing.T) {
+	tail := &lastLines{limit: 2}
+	tail.Write([]byte("one\r\n\ntwo\nthr"))
+	tail.Write([]byte("ee\nfour"))
+	// The last two complete lines are kept, plus the unfinished one.
+	if got := tail.String(); got != "two\nthree\nfour" {
+		t.Fatalf("unexpected tail %q", got)
+	}
+}
+
+func TestTestOutputReplacesDialogsAndBrowser(t *testing.T) {
+	folder := t.TempDir()
+	t.Setenv("OFFICEFLOW_TEST_OUTPUT", folder)
+	if code := failure("OfficeFlow could not start.", "line one\nline two"); code != 1 {
+		t.Fatalf("failure returned %d", code)
+	}
+	openBrowser("http://127.0.0.1:8080/#setup=x")
+	notify("OfficeFlow has stopped.")
+	for name, want := range map[string]string{
+		"error.txt":      "OfficeFlow could not start. |  | line one | line two",
+		"opened-url.txt": "http://127.0.0.1:8080/#setup=x",
+		"notice.txt":     "OfficeFlow has stopped.",
+	} {
+		data, err := os.ReadFile(filepath.Join(folder, name))
+		if err != nil || strings.TrimSpace(string(data)) != want {
+			t.Fatalf("%s: %q (%v)", name, data, err)
 		}
 	}
 }
 
-func TestPasswordPromptFromRedirectedInput(t *testing.T) {
-	input := bufio.NewReader(strings.NewReader("too-short\ntoo-short\nfirst-password-1\nother-password-1\nchosen-password\nchosen-password\n"))
-	stdout := os.Stdout
-	reader, writer, _ := os.Pipe()
-	os.Stdout = writer
-	password, err := askNewPassword(input, false)
-	writer.Close()
-	os.Stdout = stdout
-	output, _ := io.ReadAll(reader)
-	if err != nil || password != "chosen-password" {
-		t.Fatalf("got %q, %v", password, err)
+func TestPortFree(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(string(output), "chosen-password") {
-		t.Fatal("the password was printed")
+	address := listener.Addr().String()
+	if portFree(address) {
+		t.Fatal("a port in use was reported free")
 	}
-	if _, err := askNewPassword(bufio.NewReader(strings.NewReader("")), false); err == nil {
-		t.Fatal("empty input must not create a workspace")
+	listener.Close()
+	if !portFree(address) {
+		t.Fatal("a released port was reported busy")
 	}
 }
