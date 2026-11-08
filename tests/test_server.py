@@ -609,4 +609,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BaseException as error:
+        # One line the CI summary picks up ("FAILED"), so the cause shows on the run page.
+        import traceback
+        frames = traceback.extract_tb(error.__traceback__)[-3:]
+        where = " <- ".join(f"{f.name}:{f.lineno} {f.line}" for f in reversed(frames))
+        print(f"HTTP integration FAILED: {type(error).__name__}: {str(error)[:1500]} at {where}",
+              flush=True)
+        raise
