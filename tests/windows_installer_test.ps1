@@ -89,6 +89,15 @@ try {
   $target = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcut).TargetPath
   Assert ($target -eq (Join-Path $installDir "OfficeFlow.exe")) "the shortcut opens OfficeFlow.exe ($target)"
   Assert ((Get-DisplayVersion) -eq "1.0.0") "Apps & features lists OfficeFlow 1.0.0"
+  # The installed terms must be TERMS.md from this commit; only CRLF versus LF may differ.
+  $installedTerms = Join-Path $installDir "TERMS.txt"
+  $repoTerms = Join-Path (Split-Path $PSScriptRoot -Parent) "TERMS.md"
+  Assert (Test-Path $installedTerms) "TERMS.txt is installed"
+  $installedText = [IO.File]::ReadAllText($installedTerms) -replace "`r`n", "`n"
+  $repoText = [IO.File]::ReadAllText($repoTerms) -replace "`r`n", "`n"
+  Assert ($installedText -ceq $repoText) "the installed TERMS.txt matches TERMS.md from this commit"
+  $termsHash = (Get-FileHash -InputStream ([IO.MemoryStream]::new([Text.Encoding]::UTF8.GetBytes($repoText))) -Algorithm SHA256).Hash.ToLowerInvariant()
+  Notice "Installed TERMS.txt matches TERMS.md from this commit ($($repoText.Length) characters, LF-normalised SHA-256 $termsHash)"
   Notice "Installed per user to $installDir without administrator rights; Start menu shortcut -> $target; listed as OfficeFlow $(Get-DisplayVersion)"
 
   # First launch from the Start menu, save an inventory item, stop with Ctrl+C.
