@@ -15,8 +15,10 @@ import hashlib
 import http.client
 import io
 import json
+import os
 import re
 import shutil
+import subprocess
 import sys
 import tarfile
 import time
@@ -46,17 +48,68 @@ def download(url, target):
             partial.replace(target)
             print(f"Downloaded {name} ({Path(target).stat().st_size:,} bytes)", flush=True)
             return target
-        except Exception as error:  # noqa: BLE001 - classified below
-            temporary = (error.code in TEMPORARY_HTTP_ERRORS if isinstance(error, urllib.error.HTTPError)
-                         else isinstance(error, (urllib.error.URLError, TimeoutError, ConnectionError,
-                                                 http.client.IncompleteRead)))
+        except Exception as error:  # noqa: BLE001 - classified by is_temporary
             partial.unlink(missing_ok=True)
-            if not temporary or attempt == DOWNLOAD_ATTEMPTS:
+            if not is_temporary(error) or attempt == DOWNLOAD_ATTEMPTS:
                 print(f"::error title=Download failed::{name} from {url}: {error}", flush=True)
                 raise
             wait = 10 * 2 ** (attempt - 1)
             print(f"::warning title=Download retry::{name}: {error}; retrying in {wait} s", flush=True)
             time.sleep(wait)
+
+
+def is_temporary(error):
+    """True for server and network errors worth retrying (408, 429, 5xx, timeouts, resets)."""
+    if isinstance(error, urllib.error.HTTPError):
+        return error.code in TEMPORARY_HTTP_ERRORS
+    return isinstance(error, (urllib.error.URLError, TimeoutError, ConnectionError, http.client.IncompleteRead))
+
+
+GIT_FETCH_ATTEMPTS = 3
+# Ignore the machine's own git settings (core.autocrlf, filters) so `git archive` writes the
+# files exactly as committed, like GitHub's archive.
+GIT_ENV = {**os.environ, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_TERMINAL_PROMPT": "0"}
+
+
+def commit_archive_of(repository, commit, target):
+    """Downloads GitHub's archive of a pinned commit. If GitHub keeps failing with temporary
+    errors, fetches exactly that commit with git instead and archives it with the same top
+    folder (<repo>-<commit>/), so the checks that follow see the same layout. Returns
+    (path, how) where how describes the source used, for the provenance record."""
+    name = repository.rstrip("/").rsplit("/", 1)[1]
+    try:
+        return download(f"{repository}/archive/{commit}.tar.gz", target), "GitHub's archive download"
+    except Exception as error:  # noqa: BLE001
+        if not is_temporary(error):
+            raise
+        print(f"::warning title=Archive fallback::{Path(target).name}: GitHub's archive kept failing "
+              f"({error}); fetching commit {commit} with git instead", flush=True)
+    clone = Path(f"{target}.git")
+    for attempt in range(1, GIT_FETCH_ATTEMPTS + 1):
+        shutil.rmtree(clone, ignore_errors=True)
+        try:
+            subprocess.run(["git", "init", "-q", "--bare", str(clone)], check=True, env=GIT_ENV)
+            print(f"git fetch {repository} {commit} (attempt {attempt}/{GIT_FETCH_ATTEMPTS})", flush=True)
+            subprocess.run(["git", "-C", str(clone), "fetch", "-q", "--depth", "1", "--no-tags",
+                            f"{repository}.git", commit], check=True, timeout=1200, env=GIT_ENV)
+            break
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            if attempt == GIT_FETCH_ATTEMPTS:
+                print(f"::error title=Git fetch failed::{repository} {commit}: {error}", flush=True)
+                raise
+            wait = 30 * attempt
+            print(f"::warning title=Git fetch retry::{repository}: {error}; retrying in {wait} s", flush=True)
+            time.sleep(wait)
+    fetched = subprocess.run(["git", "-C", str(clone), "rev-parse", "FETCH_HEAD^{commit}"],
+                             check=True, capture_output=True, text=True, env=GIT_ENV).stdout.strip()
+    if fetched != commit:
+        raise SystemExit(f"git fetched {fetched}, not the pinned commit {commit}")
+    subprocess.run(["git", "-C", str(clone), "archive", "--format=tar.gz", f"--prefix={name}-{commit}/",
+                    "-o", str(Path(target).resolve()), commit], check=True, env=GIT_ENV)
+    shutil.rmtree(clone, ignore_errors=True)
+    print(f"Archived {Path(target).name} from git commit {fetched} ({Path(target).stat().st_size:,} bytes)",
+          flush=True)
+    return target, f"`git fetch` of commit `{commit}` (verified) and `git archive`, because GitHub's archive download kept failing"
 
 
 def sha256(path):
@@ -121,8 +174,9 @@ def main():
                   f"build scripts commit `{scripts}`.")
 
     # The exact jdk21u commit, compared file by file with the official tarball.
-    commit_archive = download(f"{PIN['openjdk_source']['repository']}/archive/{commit}.tar.gz",
-                              work / f"jdk21u-{commit}.tar.gz")
+    commit_archive, how = commit_archive_of(PIN["openjdk_source"]["repository"], commit,
+                                            work / f"jdk21u-{commit}.tar.gz")
+    report.append(f"- The jdk21u commit was obtained by {how}.")
     official, upstream = tree(sources), tree(commit_archive)
     missing = sorted(set(upstream) - set(official))
     extra = sorted(set(official) - set(upstream))
@@ -143,10 +197,10 @@ def main():
     # Temurin's build scripts at the commit that produced the Windows JDK.
     build = stage / "temurin-build"
     build.mkdir()
-    build_archive = download(f"{PIN['build_scripts']['repository']}/archive/{scripts}.tar.gz",
-                             build / f"temurin-build-{scripts}.tar.gz")
-    report.append(f"- Temurin build scripts `temurin-build-{scripts}.tar.gz` downloaded from the "
-                  "commit named in Adoptium's metadata. The Windows build's configure and make "
+    build_archive, how = commit_archive_of(PIN["build_scripts"]["repository"], scripts,
+                                           build / f"temurin-build-{scripts}.tar.gz")
+    report.append(f"- Temurin build scripts `temurin-build-{scripts}.tar.gz`, from the commit named "
+                  f"in Adoptium's metadata, obtained by {how}. The Windows build's configure and make "
                   f"arguments are in `openjdk/{PIN['jdk']['file']}.json`.")
 
     # How OfficeFlow derived its runtime from the JDK.
