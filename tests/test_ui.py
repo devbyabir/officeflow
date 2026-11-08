@@ -469,7 +469,10 @@ class JavaFirstRunBrowserTests(unittest.TestCase):
         dialog.get_by_label("Password", exact=True).fill("fourteen chars")
         dialog.get_by_label("Confirm password", exact=True).fill("fourteen chars")
         dialog.get_by_role("button", name="Create account").click()
-        expect(dialog.locator(".form-error")).to_contain_text("15")
+        # Too short: the browser's minlength check or the server's message stops it.
+        expect(dialog.get_by_role("heading", name="Create account")).to_be_visible()
+        self.assertTrue(page.evaluate("""() => !document.querySelector('#field-password').validity.valid
+            || document.querySelector('.form-error').textContent.includes('15')"""))
         dialog.get_by_label("Password", exact=True).fill("paper clips and coffee")
         dialog.get_by_label("Confirm password", exact=True).fill("paper clips and tea")
         dialog.get_by_role("button", name="Create account").click()

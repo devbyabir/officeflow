@@ -47,7 +47,7 @@ jobs:
           for suite in service-tests http-tests ui-tests; do
             file="$RUNNER_TEMP/$suite.txt"
             [ -f "$file" ] || { echo "::warning title=$suite::No output; the suite did not run."; continue; }
-            lines=$(grep -E "^stage:|passed|refused|Skipped|skipped|JAR started|^Ran |^OK|FAILED|JavaAccountBrowserTests" "$file" || true)
+            lines=$(grep -E "^stage:|passed|refused|Skipped|skipped|JAR started|^Ran |^OK|FAILED|^(FAIL|ERROR): |JavaAccountBrowserTests|JavaFirstRunBrowserTests" "$file" || true)
             [ -n "$lines" ] || { echo "::warning title=$suite::No summary lines; the suite stopped early."; continue; }
             # One annotation per suite: GitHub shows at most 10 notices per step.
             echo "::notice title=$suite::$(printf '%s' "$lines" | sed ':a;N;$!ba;s/\n/%0A/g')"
