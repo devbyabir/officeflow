@@ -82,14 +82,22 @@ public static class LauncherProbe {
 function Start-Launcher([string]$Folder) {
   $process = Start-Process -FilePath (Join-Path $Folder "OfficeFlow.exe") -WorkingDirectory $env:SystemRoot -PassThru
   $script:launched += $process
-  $samples = 0; $seen = @()
-  for ($i = 0; $i -lt 1800 -and -not (Test-Ready); $i++) {
+  # Samples from the moment of launch for at least 5 seconds and until port 8080 accepts
+  # connections, using a fast TCP probe so the first sample is taken at once.
+  $samples = 0; $seen = @(); $clock = [Diagnostics.Stopwatch]::StartNew(); $listening = $false
+  while ($clock.Elapsed.TotalSeconds -lt 90 -and ($clock.Elapsed.TotalSeconds -lt 5 -or -not $listening)) {
     $owners = [LauncherProbe]::VisibleWindowOwners()
     $ids = @($process.Id) + @(Get-Tree $process.Id | ForEach-Object { [int]$_.ProcessId })
     foreach ($id in $ids) { if ($owners.Contains([uint32]$id)) { $seen += (Get-Process -Id $id -ErrorAction SilentlyContinue).ProcessName } }
     $samples++
+    if (-not $listening) {
+      $probe = [Net.Sockets.TcpClient]::new()
+      try { $listening = $probe.ConnectAsync("127.0.0.1", 8080).Wait(100) -and $probe.Connected } catch { } finally { $probe.Dispose() }
+    }
     Start-Sleep -Milliseconds 50
   }
+  for ($i = 0; $i -lt 120 -and -not (Test-Ready); $i++) { Start-Sleep -Milliseconds 250 }
+  Assert ($samples -ge 10) "the window check sampled the start ($samples samples)"
   Assert (Test-Ready) "OfficeFlow answers after a shell launch"
   Assert ($seen.Count -eq 0) "no visible window from OfficeFlow.exe, java.exe or a console host while starting (seen: $($seen -join ', '))"
   return [pscustomobject]@{ Process = $process; Samples = $samples }
@@ -149,7 +157,7 @@ try {
   Invoke-Api "/api/setup" @{ token = $token; password = "Another password 12" } -Expected 409 | Out-Null
   Invoke-Api "/api/command" @{ action = "saveSupply"; data = @{
       name = "Windowless check folders"; category = "Stationery"; quantity = "6"; threshold = "2"; unit = "packs" } } (Login) | Out-Null
-  Notice "First start: $($start.Samples) samples while starting showed no visible window; browser opened the setup screen; admin created once (a second setup was refused with 409); item saved; process tree: $($names -join ', ')"
+  Notice "First start: $($start.Samples) samples (every ~50 ms from launch until the server listened, at least 5 s) showed no visible window from OfficeFlow.exe, java.exe or a console host; browser opened the setup screen; admin created once (a second setup was refused with 409); item saved; process tree: $($names -join ', ')"
 
   # 3. A second launch while OfficeFlow runs only opens the browser.
   $again = Start-Process -FilePath $exe -WorkingDirectory $env:SystemRoot -PassThru
