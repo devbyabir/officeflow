@@ -573,7 +573,7 @@ def legacy_upgrade(temp):
         call = client(server.base)
         assert call("/api/setup") == {"required": False, "status": "done"}, "no setup again"
         login = call("/api/login", {"username": "001", "password": old_admin})
-        assert login["actor"]["username"] is None, login
+        assert login["actor"].get("username") is None, login  # Gson omits a null username
         admin = login["token"]
         state = call("/api/state", token=admin)
         assert [s["quantity"] for s in state["supplies"] if s["name"] == "Legacy staplers"] == [7]
