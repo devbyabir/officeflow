@@ -7,7 +7,7 @@
 An inventory and requisition workspace for one office, rebuilt from my
 third-semester Java final project at Zhengzhou University.
 
-![Live Demo](https://img.shields.io/badge/Live_Demo-sample_data-3B5BDB?style=for-the-badge&logo=githubpages&logoColor=white)
+<a href="https://devbyabir.github.io/officeflow/"><img src="https://img.shields.io/badge/Live_Demo-sample_data-3B5BDB?style=for-the-badge&amp;logo=githubpages&amp;logoColor=white" alt="Live Demo with sample data"></a>
 [![DOWNLOAD FOR WINDOWS](https://img.shields.io/badge/%EF%A3%BF-DOWNLOAD%20FOR%20WINDOWS-darkgreen?style=for-the-badge)](https://github.com/devbyabir/officeflow/releases/tag/v1.0.0)
 
 [![Application checks](https://github.com/devbyabir/officeflow/actions/workflows/checks.yml/badge.svg)](https://github.com/devbyabir/officeflow/actions/workflows/checks.yml)
@@ -37,10 +37,9 @@ the same computer and browser, signing in and out in turn. The server only
 accepts connections from that computer; other computers on the network cannot
 reach it. Your records are saved in a database file on that computer.
 
-**Coming soon.** The Windows installer will be on the Releases page once the
-signed, tested release is public. Until then, try the
-[Live Demo](https://devbyabir.github.io/officeflow/) with sample data, or run
-OfficeFlow from source (below).
+The Windows installer is on the [OfficeFlow 1.0.0 release page](https://github.com/devbyabir/officeflow/releases/tag/v1.0.0).
+You can also try the [Live Demo](https://devbyabir.github.io/officeflow/) with
+sample data before downloading.
 
 The installer includes its own Java runtime, so nothing else needs to be
 installed first. It needs Windows 10 or 11 (x64).
