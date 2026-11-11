@@ -7,8 +7,7 @@
 An inventory and requisition workspace for one office, rebuilt from my
 third-semester Java final project at Zhengzhou University.
 
-[![LIVE DEMO](https://img.shields.io/badge/---LIVE%20DEMO-grey?style=for-the-badge)](https://devbyabir.github.io/officeflow/)
-[![SAMPLE DATA](https://img.shields.io/badge/SAMPLE%20DATA-blue?style=for-the-badge)](https://devbyabir.github.io/officeflow/)
+[![LIVE DEMO / SAMPLE DATA](https://img.shields.io/badge/LIVE%20DEMO%20%2F%20SAMPLE%20DATA-blue?style=for-the-badge)](https://devbyabir.github.io/officeflow/)
 [![DOWNLOAD FOR WINDOWS](https://img.shields.io/badge/%EF%A3%BF-DOWNLOAD%20FOR%20WINDOWS-darkgreen?style=for-the-badge)](https://github.com/devbyabir/officeflow/releases/tag/v1.0.0)
 
 [![Application checks](https://github.com/devbyabir/officeflow/actions/workflows/checks.yml/badge.svg)](https://github.com/devbyabir/officeflow/actions/workflows/checks.yml)
