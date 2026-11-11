@@ -1,0 +1,114 @@
+OfficeFlow for Windows - Quick Start
+====================================
+
+OfficeFlow keeps an office's supply inventory and requisitions on one shared
+Windows PC. The administrator and teachers use the same computer and browser,
+signing in and out in turn. Other computers cannot connect to it.
+
+OfficeFlow includes its own Java runtime, so Java does not need to be installed.
+
+Requirements:
+- Windows 10 or 11 (64-bit) and a web browser.
+- Microsoft Visual C++ Redistributable for Visual Studio 2015-2022 (x64),
+  version 14.40 or newer. Many PCs already have it. If it is missing, setup
+  offers to download Microsoft's official installer from Microsoft and run it
+  (Windows asks for administrator permission). OfficeFlow also checks when it
+  starts and opens Microsoft's page if needed:
+      https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist
+
+
+Terms of use
+------------
+OfficeFlow is provided under the end-user terms in TERMS.txt in the OfficeFlow
+program folder (also attached to the release page as OfficeFlow-<version>-TERMS.md). They
+allow personal use and internal use by offices, schools and businesses,
+including installation on the organisation's computers. Using OfficeFlow
+means you accept them.
+
+
+1. Start OfficeFlow
+-------------------
+1. Run OfficeFlow-Setup-<version>-x64.exe and follow the steps. No
+   administrator rights are needed for OfficeFlow itself.
+2. Open OfficeFlow from the Start menu. It runs in the background without a
+   window and opens http://127.0.0.1:8080 in your browser.
+3. The first time, the "Create account" screen asks for a username and a
+   password for the administrator. It works only on this computer, for 15
+   minutes, and only once. Afterwards you are logged in.
+4. Next time, use "Log in" with your username and password. Accounts from
+   before usernames can still log in with their account ID (the first
+   administrator is 001) and choose a username under Account.
+
+Passwords are passphrases of 15-120 characters; spaces are fine. Passwords
+set with an earlier version keep working. Forgot your login? The link on the
+Log in screen lists general reminders; an administrator can set a temporary
+password for a teacher.
+
+Closing the browser tab does not stop OfficeFlow. Open OfficeFlow from the
+Start menu again to get back to it.
+
+
+2. Stop OfficeFlow
+------------------
+Click "Quit OfficeFlow" in the sidebar (or on the sign-in screen), or open
+"Quit OfficeFlow" from the Start menu. Your records are saved.
+
+
+3. Teachers
+-----------
+Add teachers under Teachers. OfficeFlow shows each new teacher's temporary
+password once; give it to them privately. At first sign-in they choose their
+own password. Forgotten password: Account > Reset teacher password.
+Always sign out before leaving the shared PC.
+
+
+4. Where your data is
+---------------------
+Your workspace is a single file:
+
+    %LOCALAPPDATA%\OfficeFlow\officeflow.mv.db
+
+It is not inside the OfficeFlow program folder, so upgrading or uninstalling
+OfficeFlow keeps it. officeflow.log in the same folder records when
+OfficeFlow starts and when it stops cleanly. To open its folder, paste this into the File
+Explorer address bar:
+
+    %LOCALAPPDATA%\OfficeFlow
+
+
+5. Back up
+----------
+Stop OfficeFlow first. Then copy officeflow.mv.db from the folder above to a
+USB drive or another safe place. To restore, stop OfficeFlow, rename the
+current officeflow.mv.db (for example to officeflow-old.mv.db) and copy your
+backup into its place with the name officeflow.mv.db.
+
+
+6. Update to a newer version
+----------------------------
+Run the newer OfficeFlow-Setup-<version>-x64.exe. If OfficeFlow is open,
+setup stops it cleanly first. It replaces the program and keeps your
+workspace.
+
+
+If something goes wrong
+-----------------------
+- "OfficeFlow needs the Microsoft Visual C++ Redistributable": install the
+  X64 Visual C++ Redistributable from the Microsoft page shown, then start
+  OfficeFlow again.
+- "Another program is using port 8080": close that program, or restart the
+  PC, then open OfficeFlow again.
+- "The workspace is already open in another copy of OfficeFlow": quit the
+  other copy (for example one started from a ZIP), then open OfficeFlow again.
+- "This setup screen has expired": click Quit OfficeFlow, then open OfficeFlow
+  from the Start menu again for a new setup screen.
+- The browser says it cannot reach OfficeFlow: OfficeFlow was quit. Open it
+  from the Start menu and press Retry in the browser.
+- Setup says OfficeFlow is still running: use Quit OfficeFlow, then run setup
+  again.
+- Any other message when OfficeFlow starts: it names the problem and the file
+  with details (%LOCALAPPDATA%\OfficeFlow\launcher.log). If files are
+  missing, run the setup again to repair the installation.
+
+More help: https://github.com/devbyabir/officeflow
+Licences: LICENSE.txt and THIRD-PARTY-NOTICES.txt in the OfficeFlow program folder.

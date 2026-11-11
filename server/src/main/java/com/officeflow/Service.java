@@ -19,13 +19,39 @@ public final class Service {
     this.store = store;
   }
 
-  public synchronized Accounts.Account login(String id, String password) throws SQLException {
-    String[] credential = store.credential(id);
+  /** Signs in with a username or, for older accounts such as admin 001, an account ID. */
+  public synchronized Accounts.Account login(String name, String password) throws SQLException {
+    String id = store.accountFor(name);
+    String[] credential = id == null ? null : store.credential(id);
     if (credential == null || !Accounts.matches(password.toCharArray(), credential[1]))
-      throw new SecurityException("Account ID or password is incorrect.");
+      throw new SecurityException("Username or password is incorrect.");
     return credential[0].equals("admin")
         ? new Accounts.Administrator(id)
         : new Accounts.Teacher(id);
+  }
+
+  /** True until the first administrator has been created. */
+  public synchronized boolean setupRequired() throws SQLException {
+    return !store.hasAdministrator();
+  }
+
+  /** Creates administrator 001 once; refused when an administrator already exists. */
+  public synchronized void createFirstAdministrator(String username, String password)
+      throws SQLException {
+    store.createFirstAdministrator(username, password);
+  }
+
+  /** The account's username, or null for an older account that has not chosen one. */
+  public synchronized String username(String id) throws SQLException {
+    return store.username(id);
+  }
+
+  /** Lets a signed-in account choose or change its unique username. */
+  public synchronized String setUsername(Accounts.Account account, String username)
+      throws SQLException {
+    requireAccount(store.read(), account);
+    store.setUsername(account.id(), username);
+    return store.username(account.id());
   }
 
   /** True while the account still has a temporary password that its owner must replace. */
@@ -43,6 +69,13 @@ public final class Service {
         passwords.put(id, Accounts.temporaryPassword());
     }
     return passwords;
+  }
+
+  /** A new teacher ID may not equal someone's username, so every sign-in name is unambiguous. */
+  private void requireFreeIds(Map<String, String> newTeachers) throws SQLException {
+    for (String id : newTeachers.keySet())
+      if (store.nameTaken(id, null))
+        throw new IllegalArgumentException("Teacher ID " + id + " is already used as a username.");
   }
 
   private static JsonObject withTemporaryPasswords(JsonObject state, Map<String, String> passwords) {
@@ -99,6 +132,7 @@ public final class Service {
     requireAccount(snapshot, account);
     apply(snapshot, account, action, data);
     Map<String, String> passwords = temporaryPasswords(before, snapshot);
+    requireFreeIds(passwords);
     store.write(before, snapshot, passwords);
     return withTemporaryPasswords(visibleState(snapshot, account), passwords);
   }
@@ -131,6 +165,7 @@ public final class Service {
       }
     }
     Map<String, String> passwords = temporaryPasswords(before, state);
+    requireFreeIds(passwords);
     store.write(before, state, passwords);
     return withTemporaryPasswords(visibleState(state, account), passwords);
   }

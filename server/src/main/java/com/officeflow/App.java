@@ -30,6 +30,10 @@ public final class App {
   private static final Set<String> TEMPORARY_PASSWORD_PATHS =
       Set.of("/api/session", "/api/password/change", "/api/logout");
 
+  private static final String SETUP_UNAVAILABLE =
+      "This setup link has expired or was already used. Quit OfficeFlow, then open it again"
+          + " from the Start menu to get a new setup screen.";
+
   /** Signals that the signed-in account must replace its temporary password first. */
   private static final class PasswordChangeRequired extends SecurityException {
     private static final long serialVersionUID = 1L;
@@ -45,6 +49,10 @@ public final class App {
   private final HttpServer server;
   private long loginWindow;
   private int failedLogins;
+  /** Present only while the workspace has no administrator and browser setup is enabled. */
+  private volatile SetupToken setup;
+  /** Ends the Java process; the shutdown hook closes the database and logs a clean stop. */
+  private Runnable quitAction = () -> System.exit(0);
 
   public App(Service service, Path site, int port) throws IOException {
     this.service = service;
@@ -52,6 +60,75 @@ public final class App {
     server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
     server.createContext("/api/", this::api);
     server.createContext("/", this::staticFile);
+  }
+
+  /** Allows creating the first administrator from the browser with this one-time token. */
+  void enableBrowserSetup(SetupToken token) {
+    setup = token;
+  }
+
+  void onQuit(Runnable action) {
+    quitAction = action;
+  }
+
+  /**
+   * True for requests from this computer that name OfficeFlow's own address. The Host check
+   * stops a web page that rebinds its own domain name to 127.0.0.1 from reaching setup or quit.
+   */
+  private boolean fromThisComputer(HttpExchange exchange) {
+    if (!exchange.getRemoteAddress().getAddress().isLoopbackAddress()) return false;
+    String host = exchange.getRequestHeaders().getFirst("Host");
+    int port = port();
+    return host != null
+        && (host.equals("127.0.0.1:" + port)
+            || host.equals("localhost:" + port)
+            || host.equals("[::1]:" + port));
+  }
+
+  private JsonObject setupStatus() throws SQLException {
+    boolean required = service.setupRequired();
+    SetupToken token = setup;
+    JsonObject result = new JsonObject();
+    result.addProperty("required", required);
+    String status =
+        !required
+            ? "done"
+            : token == null
+                ? "unavailable"
+                : token.status(Instant.now()).name().toLowerCase(java.util.Locale.ROOT);
+    result.addProperty("status", status);
+    return result;
+  }
+
+  private void completeSetup(HttpExchange exchange) throws IOException, SQLException {
+    JsonObject data = body(exchange);
+    if (!service.setupRequired()) {
+      setup = null;
+      json(exchange, 409, object("error", "OfficeFlow is already set up. Sign in instead."));
+      return;
+    }
+    String password = value(data, "password");
+    if (password.length() > 200) throw new IllegalArgumentException("The password is too long.");
+    // Checked before the token is used up, so a mistyped entry can simply be corrected.
+    String username = Accounts.normalizeUsername(value(data, "username"));
+    Accounts.validatePassword(password);
+    if (data.has("confirmPassword") && !password.equals(value(data, "confirmPassword")))
+      throw new IllegalArgumentException("The passwords do not match.");
+    SetupToken token = setup;
+    if (token == null || !token.redeem(value(data, "token"), Instant.now())) {
+      JsonObject result = object("error", SETUP_UNAVAILABLE);
+      result.addProperty("code", "SETUP_TOKEN_INVALID");
+      json(exchange, 403, result);
+      return;
+    }
+    service.createFirstAdministrator(username, password);
+    setup = null;
+    // The new administrator is signed in at once.
+    Accounts.Account account = new Accounts.Administrator("001");
+    JsonObject result = object("token", newSession(account, false));
+    result.add("actor", actor(account, false));
+    result.addProperty("message", "Your account is ready.");
+    json(exchange, 200, result);
   }
 
   public void start() {
@@ -117,11 +194,15 @@ public final class App {
     }
     if (failedLogins >= 10)
       throw new SecurityException("Too many attempts. Try again in a minute.");
-    String id = value(data, "id"), password = value(data, "password");
-    if (id.length() > 30 || password.length() > 200)
+    // "username" from the Log in screen; "id" from older pages and scripts. Either field takes
+    // a username or an account ID such as 001.
+    String name = value(data, "username");
+    if (name.isEmpty()) name = value(data, "id");
+    String password = value(data, "password");
+    if (name.length() > 40 || password.length() > 200)
       throw new IllegalArgumentException("Credentials are too long.");
     try {
-      return service.login(id, password);
+      return service.login(name, password);
     } catch (SecurityException exception) {
       failedLogins++;
       throw exception;
@@ -135,15 +216,36 @@ public final class App {
         json(exchange, 200, object("service", "officeflow"));
         return;
       }
+      if (path.equals("/api/setup") || path.equals("/api/quit")) {
+        if (!fromThisComputer(exchange)) {
+          json(exchange, 403, object("error", "Only available on this computer."));
+          return;
+        }
+        if (path.equals("/api/quit")) {
+          // A JSON body is required, so a page on another site cannot trigger this without a
+          // CORS preflight, which OfficeFlow never approves.
+          body(exchange);
+          json(exchange, 200, object("message", "OfficeFlow is stopping."));
+          Thread stopper =
+              new Thread(
+                  () -> {
+                    try {
+                      Thread.sleep(250); // Lets the response reach the browser first.
+                    } catch (InterruptedException ignored) {
+                      Thread.currentThread().interrupt();
+                    }
+                    quitAction.run();
+                  },
+                  "officeflow-quit");
+          stopper.start();
+        } else if (exchange.getRequestMethod().equals("GET")) json(exchange, 200, setupStatus());
+        else completeSetup(exchange);
+        return;
+      }
       if (path.equals("/api/login")) {
         Accounts.Account account = signIn(body(exchange));
         boolean mustChange = service.passwordChangeRequired(account.id());
-        sessions.entrySet().removeIf(entry -> entry.getValue().expires().isBefore(Instant.now()));
-        byte[] bytes = new byte[32];
-        new SecureRandom().nextBytes(bytes);
-        String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-        sessions.put(token, new Session(account, Instant.now().plusSeconds(28800), mustChange));
-        JsonObject result = object("token", token);
+        JsonObject result = object("token", newSession(account, mustChange));
         result.add("actor", actor(account, mustChange));
         json(exchange, 200, result);
         return;
@@ -156,6 +258,12 @@ public final class App {
         body(exchange);
         sessions.remove(exchange.getRequestHeaders().getFirst("Authorization").substring(7));
         json(exchange, 200, object("message", "Signed out."));
+      } else if (path.equals("/api/username")) {
+        JsonObject data = body(exchange);
+        service.setUsername(account, value(data, "username"));
+        JsonObject result = object("message", "Username saved. Use it the next time you log in.");
+        result.add("actor", actor(account, false));
+        json(exchange, 200, result);
       } else if (path.equals("/api/password/change")) {
         JsonObject data = body(exchange);
         service.changePassword(account, value(data, "currentPassword"), value(data, "newPassword"));
@@ -214,10 +322,21 @@ public final class App {
     sessions.entrySet().removeIf(entry -> entry.getValue().account().id().equals(id));
   }
 
-  private static JsonObject actor(Accounts.Account account, boolean mustChange) {
+  private String newSession(Accounts.Account account, boolean mustChange) {
+    sessions.entrySet().removeIf(entry -> entry.getValue().expires().isBefore(Instant.now()));
+    byte[] bytes = new byte[32];
+    new SecureRandom().nextBytes(bytes);
+    String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    sessions.put(token, new Session(account, Instant.now().plusSeconds(28800), mustChange));
+    return token;
+  }
+
+  /** {@code username} is null for an older account that has not chosen one yet. */
+  private JsonObject actor(Accounts.Account account, boolean mustChange) throws SQLException {
     JsonObject a = object("id", account.id());
     a.addProperty("role", account.role());
     a.addProperty("mustChangePassword", mustChange);
+    a.addProperty("username", service.username(account.id()));
     return a;
   }
 
@@ -248,7 +367,9 @@ public final class App {
                         ? "application/json"
                         : file.toString().endsWith(".html")
                             ? "text/html"
-                            : "application/octet-stream";
+                            : file.toString().endsWith(".ico")
+                                ? "image/x-icon"
+                                : "application/octet-stream";
     exchange.getResponseHeaders().set("Content-Type", type + "; charset=utf-8");
     exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
     byte[] bytes = Files.readAllBytes(file);
@@ -272,21 +393,25 @@ public final class App {
     Store store;
     Path site;
     String url;
+    // OfficeFlow.exe turns this on: a new workspace then asks for its administrator password on
+    // a "Set up OfficeFlow" screen in the browser instead of in a terminal.
+    boolean browserSetup = Boolean.getBoolean("officeflow.browserSetup");
     try {
       Startup.rejectSeedFlag(System.getProperty("officeflow.seed"));
       site = startup.site(System.getProperty("officeflow.site"));
       url = startup.database(System.getProperty("officeflow.db"));
-      startup.requireAdminPasswordForNewWorkspace(url);
+      if (!browserSetup) startup.requireAdminPasswordForNewWorkspace(url);
       try {
-        store = new Store(url, System.getenv("OFFICEFLOW_ADMIN_PASSWORD"));
+        store = new Store(url, System.getenv("OFFICEFLOW_ADMIN_PASSWORD"), browserSetup);
       } catch (IllegalStateException exception) {
         throw new Startup.Problem(Startup.newWorkspaceMessage(url));
       } catch (SQLException exception) {
         if (exception.getErrorCode() == 90020)
           throw new Startup.Problem(
-              "The database is already open in another OfficeFlow window:\n  "
+              "The workspace is already open in another copy of OfficeFlow:\n  "
                   + url
-                  + "\nUse that window, or stop it with Ctrl+C and start OfficeFlow again.");
+                  + "\nUse the OfficeFlow that is already running, or quit it and start"
+                  + " OfficeFlow again.");
         throw exception;
       }
     } catch (Startup.Problem problem) {
@@ -294,7 +419,31 @@ public final class App {
       System.exit(2);
       return;
     }
-    App app = new App(new Service(store), site, Integer.getInteger("officeflow.port", 8080));
+    int port = Integer.getInteger("officeflow.port", 8080);
+    App app;
+    Service service = new Service(store);
+    SetupToken setup = null;
+    if (browserSetup && service.setupRequired())
+      setup = SetupToken.create(System.getenv("OFFICEFLOW_SETUP_TOKEN"), Instant.now());
+    try {
+      app = new App(service, site, port);
+    } catch (java.net.BindException exception) {
+      store.close();
+      System.err.println(
+          "Port "
+              + port
+              + " is already in use, so OfficeFlow cannot start.\n"
+              + "If OfficeFlow is already running in another window, use that window.\n"
+              + "Otherwise close the program using port "
+              + port
+              + ", or start OfficeFlow with \"-Dofficeflow.port=8081\".");
+      System.exit(2);
+      return;
+    }
+    Path file = startup.databaseFile(url);
+    // officeflow.log beside the database records starts and clean stops, so an interrupted
+    // shutdown can be told apart from a clean one.
+    Path events = file == null ? null : file.resolveSibling("officeflow.log");
     Runtime.getRuntime()
         .addShutdownHook(
             new Thread(
@@ -302,14 +451,60 @@ public final class App {
                   app.stop();
                   try {
                     store.close();
-                  } catch (SQLException ignored) {
+                    logEvent(events, "stopped cleanly; database closed");
+                    System.out.println("OfficeFlow stopped cleanly; the database is closed.");
+                  } catch (SQLException exception) {
+                    logEvent(events, "stop failed: database close error " + exception.getSQLState());
                   }
                 }));
+    if (setup != null) app.enableBrowserSetup(setup);
     app.start();
-    Path file = startup.databaseFile(url);
+    logEvent(events, "started on port " + app.port() + (setup != null ? " (first-run setup)" : ""));
+    // OfficeFlow.exe stops Java by closing its input (Ctrl+C or closing the window); that also
+    // happens if the launcher itself ends. Exiting runs the shutdown hook above.
+    if (Boolean.getBoolean("officeflow.stopWhenInputCloses")) {
+      Thread watcher =
+          new Thread(
+              () -> {
+                try {
+                  while (System.in.read() != -1) {}
+                } catch (IOException ignored) {
+                }
+                System.exit(0);
+              },
+              "officeflow-stop-when-input-closes");
+      watcher.setDaemon(true);
+      watcher.start();
+    }
     System.out.println("OfficeFlow: http://127.0.0.1:" + app.port());
     System.out.println("Database: " + (file == null ? url : file));
     System.out.println("Web files: " + site.toAbsolutePath());
+    if (setup != null) {
+      // A token chosen by OfficeFlow.exe is never printed: the launcher opens the browser with it.
+      if (SetupToken.valid(System.getenv("OFFICEFLOW_SETUP_TOKEN")))
+        System.out.println("First start: the setup screen opens in your browser.");
+      else
+        System.out.println(
+            "First start: open http://127.0.0.1:"
+                + app.port()
+                + "/#setup="
+                + setup.value()
+                + " within 15 minutes to create the administrator password.");
+    }
     System.out.println("Keep this window open while you use OfficeFlow. Press Ctrl+C to stop.");
+  }
+
+  /** Appends a timestamped line to officeflow.log; logging never stops OfficeFlow. */
+  private static void logEvent(Path log, String message) {
+    if (log == null) return;
+    try {
+      Files.writeString(
+          log,
+          Instant.now() + " " + message + System.lineSeparator(),
+          StandardCharsets.UTF_8,
+          java.nio.file.StandardOpenOption.CREATE,
+          java.nio.file.StandardOpenOption.APPEND);
+    } catch (IOException ignored) {
+    }
   }
 }

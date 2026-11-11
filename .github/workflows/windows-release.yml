@@ -1,0 +1,179 @@
+# Windows x64 installer: the bundled Java runtime and the native OfficeFlow.exe launcher,
+# packed with Inno Setup. Pushes to windows-release put the installer on the draft release.
+name: Windows installer
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Builds the app; the bundled runtime comes from the pinned, verified JDK below.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Build Java application
+        run: mvn -B -f server/pom.xml package
+      - name: Download and verify the pinned Temurin JDK
+        id: jdk
+        shell: pwsh
+        run: |
+          $runner = Get-Content "$env:JAVA_HOME\release" | Where-Object { $_ -match '^(IMPLEMENTOR_VERSION|SOURCE)=' }
+          Write-Output "::notice title=Runner JDK (builds the app only)::$($runner -join '; ')"
+          $jdk = ./packaging/windows/fetch-jdk.ps1 -Destination $env:RUNNER_TEMP
+          "path=$jdk" >> $env:GITHUB_OUTPUT
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: false
+      # The launcher's Visual C++ checks run here on real Windows against folders of copied
+      # files (missing, outdated, current); the runner itself always has a current runtime.
+      # OfficeFlow.exe is a GUI-subsystem program (-H windowsgui), so Windows opens no console
+      # window for it. Its icon, version details and manifest come from resources/officeflow.rc,
+      # compiled with the runner's MinGW windres into a .syso file that go build links.
+      - name: Test and build OfficeFlow.exe (x64, no cgo, no console, embedded icon)
+        shell: pwsh
+        working-directory: packaging/windows/launcher
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: |
+          $windres = (Get-Command windres -ErrorAction SilentlyContinue).Source
+          if (-not $windres) {
+            $windres = @("C:\mingw64\bin\windres.exe", "C:\msys64\mingw64\bin\windres.exe", "C:\msys64\ucrt64\bin\windres.exe") |
+              Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $windres) { throw "windres (MinGW) was not found on this runner" }
+          $env:PATH = "$(Split-Path $windres);$env:PATH"  # windres runs MinGW's C preprocessor
+          $version = ([xml](Get-Content -Raw ../../../server/pom.xml)).project.version
+          $parts = @($version -split '[.-]' | Where-Object { $_ -match '^\d+$' } | Select-Object -First 4)
+          while ($parts.Count -lt 4) { $parts += "0" }
+          Set-Content -Encoding ascii version.h "#define VERSION_COMMA $($parts -join ',')`n#define VERSION_TEXT `"$version`""
+          & $windres -O coff -F pe-x86-64 -I . -i resources/officeflow.rc -o rsrc_windows_amd64.syso
+          if ($LASTEXITCODE -ne 0) { throw "windres failed" }
+          Write-Output "::notice title=Launcher resources::icon packaging/windows/icon/officeflow.ico, version $version, manifest (asInvoker, per-monitor DPI), compiled with $windres"
+          go vet ./...
+          $tests = go test -v -count=1 ./... 2>&1
+          $tests | Write-Output
+          if ($LASTEXITCODE -ne 0) { throw "Launcher tests failed" }
+          $summary = ($tests | Select-String -Pattern '^--- (PASS|FAIL|SKIP)' | ForEach-Object { $_.Line.Trim() }) -join '%0A'
+          Write-Output "::notice title=Launcher unit tests on real Windows with simulated runtime folders::$summary"
+          go build -trimpath -ldflags "-s -w -H windowsgui" -o "$env:RUNNER_TEMP\launcher\OfficeFlow.exe" .
+      # Stages the program folder (dist\OfficeFlow-<version>-windows-x64) that the installer packs.
+      - name: Stage the program folder with the bundled Java runtime
+        shell: pwsh
+        run: ./packaging/windows/build-zip.ps1 -Jdk "${{ steps.jdk.outputs.path }}" -Launcher "$env:RUNNER_TEMP\launcher\OfficeFlow.exe" -OutputDirectory dist
+      - name: Test the program folder without system Java or Maven
+        shell: pwsh
+        run: ./tests/windows_release_smoke.ps1 -Zip (Get-ChildItem dist/*.zip).FullName
+      - name: Test the windowless launcher (no console, setup link, quit, readable errors)
+        shell: pwsh
+        run: ./tests/windows_launcher_gui.ps1 -Zip (Get-ChildItem dist/*.zip).FullName
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress | Out-Null
+          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found" }
+          "ISCC=$iscc" >> $env:GITHUB_ENV
+          Write-Output "::notice title=Inno Setup::$((Get-Item $iscc).VersionInfo.ProductVersion)"
+      # The release installer, plus a 1.0.1 build of the same files used only to test upgrades.
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          $version = ([xml](Get-Content -Raw server/pom.xml)).project.version
+          $stage = (Resolve-Path "dist/OfficeFlow-$version-windows-x64").Path
+          $script = (Resolve-Path packaging/windows/installer/OfficeFlow.iss).Path
+          $out = Join-Path $PWD "installer"
+          $upgrade = Join-Path $env:RUNNER_TEMP "upgrade-test"
+          & $env:ISCC "/DAppVersion=$version" "/DSourceDir=$stage" "/DOutputDir=$out" $script
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+          & $env:ISCC "/DAppVersion=1.0.1" "/DSourceDir=$stage" "/DOutputDir=$upgrade" $script
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed (upgrade test build)" }
+          $setup = Get-Item (Join-Path $out "OfficeFlow-Setup-$version-x64.exe")
+          $hash = (Get-FileHash -Algorithm SHA256 $setup.FullName).Hash.ToLowerInvariant()
+          Set-Content -NoNewline -Encoding ascii -Path "$($setup.FullName).sha256" -Value "$hash  $($setup.Name)`n"
+          $signatures = @($setup.FullName, (Join-Path $stage "OfficeFlow.exe"), (Join-Path $stage "runtime\bin\java.exe")) |
+            ForEach-Object { $s = Get-AuthenticodeSignature $_; "$(Split-Path $_ -Leaf): $($s.Status)$(if ($s.SignerCertificate) { ' (' + $s.SignerCertificate.GetNameInfo('SimpleName', $false) + ')' })" }
+          Write-Output "::notice title=Installer::$($setup.Name) ($([math]::Round($setup.Length / 1MB, 1)) MB) SHA-256 $hash"
+          Write-Output "::notice title=Signatures::$($signatures -join '; ')"
+          "SETUP=$($setup.FullName)" >> $env:GITHUB_ENV
+          "UPGRADE_SETUP=$(Join-Path $upgrade 'OfficeFlow-Setup-1.0.1-x64.exe')" >> $env:GITHUB_ENV
+      - name: Test install, Start menu setup, saving an item, quit, restart, upgrade and uninstall
+        shell: pwsh
+        run: ./tests/windows_installer_test.ps1 -Installer $env:SETUP -UpgradeInstaller $env:UPGRADE_SETUP
+      - name: Collect Windows release artifacts
+        shell: pwsh
+        run: |
+          $version = ([xml](Get-Content -Raw server/pom.xml)).project.version
+          $release = New-Item -ItemType Directory -Force release
+          foreach ($file in @(
+            "installer/OfficeFlow-Setup-$version-x64.exe",
+            "installer/OfficeFlow-Setup-$version-x64.exe.sha256",
+            "dist/OfficeFlow-$version-windows-x64.zip",
+            "dist/OfficeFlow-$version-windows-x64.zip.sha256"
+          )) {
+            Copy-Item -LiteralPath $file -Destination $release.FullName -ErrorAction Stop
+          }
+      - name: Upload installer, portable ZIP and checksums
+        uses: actions/upload-artifact@v5
+        with:
+          name: officeflow-windows-installer
+          path: release/
+          if-no-files-found: error
+
+  runtime-source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and verify the Java runtime source archive
+        run: python3 packaging/runtime/build_source_archive.py dist
+      - name: Upload source archive, checksum and provenance
+        uses: actions/upload-artifact@v5
+        with:
+          name: officeflow-java-runtime-source
+          path: |
+            dist/*.zip
+            dist/*.zip.sha256
+            dist/*-PROVENANCE.md
+          if-no-files-found: error
+
+  # Replaces the draft release's files with the installer, the Java runtime's source and the
+  # terms. It never publishes, and it refuses to change a release that is already published.
+  draft-release:
+    needs: [package, runtime-source]
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/windows-release') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v5
+        with:
+          path: release
+          pattern: officeflow-*
+          merge-multiple: true
+      - name: Verify checksums and write release notes
+        shell: bash
+        run: |
+          version=$(python3 -c "import re; print(re.search(r'<artifactId>officeflow</artifactId>\s*<version>([^<]+)</version>', open('server/pom.xml').read()).group(1))")
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          cp TERMS.md "release/OfficeFlow-$version-TERMS.md"
+          cd release
+          sha256sum -c *.sha256
+          sha256sum *.exe *.zip > SHA256SUMS.txt
+          {
+            cat "../docs/releases/v$version.md"
+            printf '\n## Checksums (SHA-256)\n\n```text\n'
+            cat SHA256SUMS.txt
+            printf '```\n'
+          } > ../release-notes.md
+          echo "::notice title=Release checksums::$(tr '\n' ' ' < SHA256SUMS.txt)"
+      - name: Replace the draft release's files
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 packaging/release/update_draft_release.py --replace-all "v$VERSION" release-notes.md release/*

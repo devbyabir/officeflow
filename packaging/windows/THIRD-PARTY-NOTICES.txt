@@ -1,0 +1,58 @@
+OfficeFlow for Windows - third-party notices
+============================================
+
+OfficeFlow's own code and design: Copyright (c) 2026 devbyabir. All rights
+reserved. See LICENSE.txt.
+
+This package also contains the following third-party software, each under its
+own licence.
+
+
+Java runtime (folder "runtime")
+-------------------------------
+A Java runtime created with jlink from the Eclipse Adoptium Temurin JDK
+21.0.13+9-LTS for Windows x64 (OpenJDK21U-jdk_x64_windows_hotspot_21.0.13_9.zip,
+SHA-256 a4dbaa05fca4bd89d84584e58c459bd732efebb1722af80ab13c6516832004f9),
+built from https://github.com/adoptium/jdk21u commit
+2ab10ca20c191701c3a9f3153bfc6e93d63714c1 (tag jdk-21.0.13+9_adopt).
+
+Licence: GNU General Public License, version 2, with the Classpath Exception.
+The full licence texts, the Classpath Exception and the notices for components
+included in OpenJDK are in runtime\legal (one folder per module, for example
+runtime\legal\java.base\LICENSE and runtime\legal\java.base\ASSEMBLY_EXCEPTION).
+
+Source code: the complete corresponding source for this runtime is published
+beside this ZIP, on the same release page, as
+OfficeFlow-<version>-java-runtime-source.zip. It contains Adoptium's source
+tarball for this build, the Temurin build scripts, the build configuration and
+OfficeFlow's jlink script, with a PROVENANCE.md describing how it was verified.
+
+
+Microsoft Visual C++ runtime
+----------------------------
+Not included. The Microsoft Visual C++ runtime and Universal CRT files that
+the Temurin JDK ships were removed from runtime\bin. OfficeFlow uses the
+Microsoft Visual C++ Redistributable (x64) installed on the computer from
+Microsoft, and the Universal CRT that is part of Windows 10 and 11.
+
+
+Gson 2.11.0 (inside app\officeflow.jar)
+--------------------------------------
+Copyright Google LLC.
+Licence: Apache License 2.0 - licenses\Apache-2.0.txt
+Source code: https://github.com/google/gson
+
+
+H2 Database Engine 2.3.232 (inside app\officeflow.jar)
+-----------------------------------------------------
+Copyright H2 Group.
+H2 is dual licensed under the Mozilla Public License 2.0 and the Eclipse
+Public License 1.0. It is used here under the Mozilla Public License 2.0 -
+licenses\MPL-2.0.txt
+Source code: https://github.com/h2database/h2database (tag version-2.3.232)
+
+
+Inter typeface
+--------------
+SIL Open Font License 1.1. Not included in this package: the web pages load it
+from Google Fonts when the computer is online, and use system fonts otherwise.

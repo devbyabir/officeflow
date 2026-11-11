@@ -11,7 +11,7 @@
     <!-- "sample" on GitHub Pages; the local Java server serves this page as "java". -->
     <meta name="officeflow-mode" content="sample" />
     <title>OfficeFlow · Office supplies, in order.</title>
-    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="./officeflow-icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./style.css" />
     <link rel="stylesheet" href="./theme.css" />
     <link rel="stylesheet" href="./polish.css" />
@@ -20,8 +20,14 @@
   <body>
     <aside class="sidebar" id="sidebar">
       <a class="brand" href="#overview"
-        ><span class="brand-mark">o<span>·</span></span
-        ><span>OfficeFlow<small>THE OFFICE WORKSPACE</small></span></a
+        ><img
+          class="brand-mark"
+          src="./officeflow-icon.svg"
+          alt=""
+          width="36"
+          height="36" /><span
+          >OfficeFlow<small>THE OFFICE WORKSPACE</small></span
+        ></a
       >
       <div class="workspace">
         <span class="workspace-icon">Z</span>
@@ -42,6 +48,11 @@
             ><strong id="profile-name">Workspace admin</strong
             ><small id="profile-role">Administrator</small></span
           ><span class="profile-chevron">⇄</span>
+        </button>
+        <button class="quit-button" id="quit-officeflow" type="button" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3v8M7.1 6.3a7.5 7.5 0 1 0 9.8 0" /></svg
+          >Quit OfficeFlow
         </button>
       </div>
     </aside>
@@ -67,7 +78,7 @@
             ☾ <span>Dark</span>
           </button>
           <span class="mode-badge" id="mode-badge"
-            ><i></i> Interactive demo</span
+            ><i></i> Sample workspace</span
           ><button
             class="icon-button"
             id="help"
@@ -81,11 +92,15 @@
         <span
           ><span class="live-dot"></span> A working preview. Explore as an admin
           or teacher — changes stay in this browser.</span
-        ><button id="switch-role">Switch role <span>↗</span></button>
+        ><span class="banner-actions"
+          ><span id="download-officeflow"
+            >Windows download coming soon</span
+          ><button id="switch-role">Switch role <span>↗</span></button></span
+        >
       </div>
       <main id="main" tabindex="-1"></main>
       <footer>
-        <span><span class="footer-mark">o·</span> A place for everything.</span
+        <span><img class="footer-mark" src="./officeflow-icon.svg" alt="" width="16" height="16" /> A place for everything.</span
         ><span
           >© 2026 devbyabir. All rights reserved.
           <span class="footer-divider">·</span>

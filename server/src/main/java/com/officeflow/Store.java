@@ -21,26 +21,60 @@ public final class Store implements AutoCloseable {
    * administrator yet; it must then meet the password policy. Existing workspaces ignore it.
    */
   public Store(String url, String adminPassword) throws SQLException {
+    this(url, adminPassword, false);
+  }
+
+  /**
+   * With {@code allowSetup}, a workspace without an administrator opens without one when no
+   * valid {@code adminPassword} is given; the first administrator is then created once through
+   * {@link #createFirstAdministrator}, from the browser's setup screen.
+   */
+  public Store(String url, String adminPassword, boolean allowSetup) throws SQLException {
     connection = DriverManager.getConnection(url, "sa", "");
     try {
+      boolean create = false;
       if (!hasAdministrator()) {
         try {
           Accounts.validatePassword(adminPassword == null ? "" : adminPassword);
+          create = true;
         } catch (IllegalArgumentException exception) {
-          throw new IllegalStateException(
-              "A new workspace needs an administrator password of 12-120 characters in"
-                  + " OFFICEFLOW_ADMIN_PASSWORD.");
+          if (!allowSetup)
+            throw new IllegalStateException(
+                "A new workspace needs an administrator password of 15-120 characters in"
+                    + " OFFICEFLOW_ADMIN_PASSWORD.");
         }
       }
       createSchema();
-      if (credential("001") == null) addCredential("001", "admin", adminPassword, false);
+      if (create && credential("001") == null) addCredential("001", "admin", adminPassword, false);
     } catch (SQLException | RuntimeException exception) {
       connection.close();
       throw exception;
     }
   }
 
-  private boolean hasAdministrator() throws SQLException {
+  /**
+   * Creates administrator 001 once. Fails if any administrator already exists, so a setup
+   * request can never replace an existing account or its password.
+   */
+  public void createFirstAdministrator(String username, String password) throws SQLException {
+    String name = Accounts.normalizeUsername(username);
+    Accounts.validatePassword(password == null ? "" : password);
+    connection.setAutoCommit(false);
+    try {
+      if (hasAdministrator()) throw new IllegalStateException("OfficeFlow is already set up.");
+      addCredential("001", "admin", password, false);
+      setUsername("001", name);
+      connection.commit();
+    } catch (SQLException | RuntimeException exception) {
+      connection.rollback();
+      throw exception;
+    } finally {
+      connection.setAutoCommit(true);
+    }
+  }
+
+  /** True once administrator 001 exists. */
+  public boolean hasAdministrator() throws SQLException {
     try (Statement statement = connection.createStatement();
         ResultSet tables =
             statement.executeQuery(
@@ -79,6 +113,70 @@ public final class Store implements AutoCloseable {
       statement.execute(
           "ALTER TABLE credentials ADD COLUMN IF NOT EXISTS must_change BOOLEAN DEFAULT FALSE"
               + " NOT NULL");
+      // Usernames arrived later: older accounts have none and keep signing in with their ID.
+      statement.execute("ALTER TABLE credentials ADD COLUMN IF NOT EXISTS username VARCHAR(32)");
+      statement.execute(
+          "CREATE UNIQUE INDEX IF NOT EXISTS credentials_username ON credentials(username)");
+    }
+  }
+
+  /**
+   * The account ID for a sign-in name: a username (any case) or, for accounts created before
+   * usernames and as a fallback, the account ID itself. Null when neither matches.
+   */
+  public String accountFor(String name) throws SQLException {
+    if (name == null || name.isBlank()) return null;
+    try (PreparedStatement statement =
+        connection.prepareStatement("SELECT id FROM credentials WHERE username = ?")) {
+      statement.setString(1, name.trim().toLowerCase(java.util.Locale.ROOT));
+      try (ResultSet result = statement.executeQuery()) {
+        if (result.next()) return result.getString(1);
+      }
+    }
+    return credential(name.trim()) != null ? name.trim() : null;
+  }
+
+  /** The account's username, or null if it has not chosen one. */
+  public String username(String id) throws SQLException {
+    try (PreparedStatement statement =
+        connection.prepareStatement("SELECT username FROM credentials WHERE id = ?")) {
+      statement.setString(1, id);
+      try (ResultSet result = statement.executeQuery()) {
+        return result.next() ? result.getString(1) : null;
+      }
+    }
+  }
+
+  /**
+   * True if {@code name} is already a username or an account ID (ignoring case) of an account
+   * other than {@code except}. Usernames and IDs never overlap, so a sign-in name is unambiguous.
+   */
+  public boolean nameTaken(String name, String except) throws SQLException {
+    try (PreparedStatement statement =
+        connection.prepareStatement(
+            "SELECT COUNT(*) FROM credentials WHERE (LOWER(id) = ? OR username = ?) AND id <> ?")) {
+      String value = name.toLowerCase(java.util.Locale.ROOT);
+      statement.setString(1, value);
+      statement.setString(2, value);
+      statement.setString(3, except == null ? "" : except);
+      try (ResultSet result = statement.executeQuery()) {
+        result.next();
+        return result.getInt(1) > 0;
+      }
+    }
+  }
+
+  /** Sets a unique username for the account; see {@link Accounts#normalizeUsername}. */
+  public void setUsername(String id, String username) throws SQLException {
+    String name = Accounts.normalizeUsername(username);
+    if (nameTaken(name, id))
+      throw new IllegalArgumentException("That username is taken. Choose another one.");
+    try (PreparedStatement statement =
+        connection.prepareStatement("UPDATE credentials SET username = ? WHERE id = ?")) {
+      statement.setString(1, name);
+      statement.setString(2, id);
+      if (statement.executeUpdate() != 1)
+        throw new IllegalArgumentException("Account no longer exists.");
     }
   }
 

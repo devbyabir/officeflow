@@ -72,6 +72,31 @@ let tablePage = 1,
 let lastRenderedPage = "";
 const animatedWorkspaces = new Set();
 let closingAnimation;
+// Set while the setup or sign-in screen is shown: it cannot be dismissed, only completed or
+// quit. resumeAuth reopens that screen after "Keep working" in the quit confirmation.
+let authLocked = false,
+  resumeAuth = null,
+  justSaved = "";
+// OfficeFlow.exe opens the first run as /#setup=<token>. A URL fragment never reaches the
+// server or its logs; the token is kept only in this tab and removed from the address bar.
+let setupToken = "";
+if (JAVA_MODE) {
+  const offered = location.hash.match(/^#setup=([A-Za-z0-9_-]{32,128})$/)?.[1];
+  try {
+    if (offered) sessionStorage.setItem("officeflow-setup", offered);
+    setupToken = sessionStorage.getItem("officeflow-setup") || "";
+  } catch {
+    setupToken = offered || "";
+  }
+  if (location.hash.startsWith("#setup="))
+    history.replaceState(null, "", location.pathname + location.search);
+}
+function forgetSetupToken() {
+  setupToken = "";
+  try {
+    sessionStorage.removeItem("officeflow-setup");
+  } catch {}
+}
 if (JAVA_MODE) state = { supplies: [], teachers: [], requests: [] };
 else
   try {
@@ -105,7 +130,7 @@ async function apiCall(path, body) {
     } catch {
       throw Object.assign(
         new Error(
-          "OfficeFlow's server is not answering. Check that the OfficeFlow window is still open, then try again.",
+          "OfficeFlow is not answering. It may have been closed: open OfficeFlow from the Start menu, then try again.",
         ),
         { offline: true },
       );
@@ -114,13 +139,14 @@ async function apiCall(path, body) {
     if (!response.ok && result.code === "SESSION_EXPIRED") {
       clearSession();
       loginDialog();
-      toast("Your session has ended. Please sign in again.");
+      toast("Your session has ended. Please log in again.");
     }
     if (!response.ok && result.code === "PASSWORD_CHANGE_REQUIRED")
       passwordDialog(false, true);
     if (!response.ok)
-      throw new Error(
-        result.error || "The server could not complete this request.",
+      throw Object.assign(
+        new Error(result.error || "The server could not complete this request."),
+        { code: result.code },
       );
     return result;
   } finally {
@@ -153,8 +179,10 @@ function temporaryPasswordsDialog(passwords) {
     `<div class="help-copy"><ul class="temporary-passwords">${passwords.map((p) => `<li><strong>${escape(p.id)}</strong> <code>${escape(p.password)}</code></li>`).join("")}</ul><p>Share each password privately. If one is lost, use <strong>Account → Reset teacher password</strong>.</p></div><div class="dialog-actions"><button class="button primary" data-action="close">Done</button></div>`,
   );
 }
-function toast(message) {
+function toast(message, kind = "") {
   $("#toast").textContent = message;
+  $("#toast").className = kind;
+  void $("#toast").offsetWidth;
   $("#toast").classList.add("show");
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => $("#toast").classList.remove("show"), 4000);
@@ -285,11 +313,13 @@ function inventoryTable(compact = false) {
   const result = paginate(list, tablePage, pageSize);
   tablePage = result.page;
   const visible = compact ? list.slice(0, 5) : result.items;
-  return `<div class="filter-summary" role="status">${list.length} matching item${list.length === 1 ? "" : "s"}${stockFilter ? " · Low or out of stock" : ""}<button class="text-button" data-action="clear-filters">Clear filters</button></div>
-  <div class="table-wrap"><table><caption class="screen-reader">Supply inventory with available quantities</caption><thead><tr><th>SUPPLY ITEM</th><th>CATEGORY</th><th>AVAILABLE / ON HAND</th><th>STATUS</th><th><span class="screen-reader">Actions</span></th></tr></thead><tbody>${visible
+  return `${compact ? "" : `<div class="filter-summary" role="status"><span>${list.length} matching item${list.length === 1 ? "" : "s"}${stockFilter ? " · Low or out of stock" : ""}<span class="stock-note">Available = on hand minus units reserved for pending requests</span></span><button class="text-button" data-action="clear-filters">Clear filters</button></div>`}
+  <div class="table-wrap"><table class="inventory-table"><caption class="screen-reader">Supply inventory. Available is on hand minus units reserved for pending requests.</caption><thead><tr><th scope="col">Item</th><th scope="col">Category</th><th scope="col" class="num" title="Ready to request: on hand minus units reserved for pending requests">Available</th><th scope="col" class="num" title="Physically in the cupboard, including reserved units">On hand</th><th scope="col">Status</th><th scope="col"><span class="screen-reader">Actions</span></th></tr></thead><tbody>${visible
     .map((item) => {
       const parts = stockParts(item.quantity, available(state, item));
-      return `<tr><td><div class="item-cell">${itemIcon(item)}<div><button class="item-detail-link" data-action="supply-details" data-id="${escape(item.id)}">${escape(item.name)}</button><div class="item-id">${escape(item.id.length > 15 ? "SUP-" + item.id.slice(-6).toUpperCase() : item.id)}</div></div></div></td><td class="category-text">${escape(item.category)}</td><td><span class="qty">${parts.available}<small>/ ${parts.onHand} ${escape(item.unit)}</small></span><div class="stock-track" role="img" aria-label="${parts.available} available, ${parts.reserved} reserved, ${parts.onHand} on hand"><span style="width:${parts.percent}%"></span></div><div class="item-id">${parts.reserved} reserved</div></td><td>${badge(stockStatus(state, item))}</td><td><button class="row-action" data-action="${actor.role === "admin" ? "edit-supply" : "request-item"}" data-id="${escape(item.id)}" title="${actor.role === "admin" ? "Edit inventory" : "Request supplies"}" aria-label="${actor.role === "admin" ? "Edit" : "Request"} ${escape(item.name)}">${actor.role === "admin" ? "↗" : "＋"}</button></td></tr>`;
+      const status = stockStatus(state, item);
+      const tone = { "Low stock": "low", "Out of stock": "out" }[status] || "ok";
+      return `<tr data-supply="${escape(item.id)}"${justSaved && justSaved === item.name ? ' class="just-saved"' : ""}><td><div class="item-cell">${itemIcon(item)}<div class="item-text"><button class="item-detail-link" data-action="supply-details" data-id="${escape(item.id)}">${escape(item.name)}</button><span class="item-id">${escape(item.id.length > 15 ? "SUP-" + item.id.slice(-6).toUpperCase() : item.id)}</span></div></div></td><td class="category-text">${escape(item.category)}</td><td class="num"><span class="qty-available ${tone}">${parts.available}</span><span class="qty-unit">${escape(item.unit)}</span></td><td class="num"><span class="qty-onhand">${parts.onHand}</span>${parts.reserved ? `<span class="qty-reserved">${parts.reserved} reserved</span>` : ""}</td><td>${badge(status)}</td><td><button class="row-action" data-action="${actor.role === "admin" ? "edit-supply" : "request-item"}" data-id="${escape(item.id)}" title="${actor.role === "admin" ? "Edit inventory" : "Request supplies"}" aria-label="${actor.role === "admin" ? "Edit" : "Request"} ${escape(item.name)}">${actor.role === "admin" ? "↗" : "＋"}</button></td></tr>`;
     })
     .join(
       "",
@@ -328,7 +358,7 @@ function overview() {
         ),
     ) +
     metrics() +
-    `<div class="content-grid"><div><section class="panel"><div class="panel-heading"><div><h2>Supply inventory</h2><p>The essentials that keep your office running.</p></div><a class="text-button" href="#inventory">View all ${icon("arrow")}</a></div>${toolbar()}<div id="inventory-results">${inventoryTable(true)}</div></section><section class="panel section-spacer"><div class="panel-heading"><div><h2>${actor.role === "admin" ? "Needs your approval" : "Your pending requests"}</h2><p>${pending().length} pending requisition${pending().length === 1 ? "" : "s"} in the queue.</p></div><a class="text-button" href="#requests">View all ${icon("arrow")}</a></div>${
+    `<div class="content-grid"><div><section class="panel"><div class="panel-heading"><div><h2>Supply inventory</h2><p>The essentials that keep your office running.</p></div><a class="text-button" href="#inventory">View all ${icon("arrow")}</a></div><div id="inventory-results">${inventoryTable(true)}</div></section><section class="panel section-spacer"><div class="panel-heading"><div><h2>${actor.role === "admin" ? "Needs your approval" : "Your pending requests"}</h2><p>${pending().length} pending requisition${pending().length === 1 ? "" : "s"} in the queue.</p></div><a class="text-button" href="#requests">View all ${icon("arrow")}</a></div>${
       pending()
         .slice(0, 3)
         .map((r) => requestRow(r, true))
@@ -343,7 +373,7 @@ function overview() {
         )
         .join("") ||
       '<div class="restock-item"><strong>Everything is well stocked.</strong></div>'
-    }</div><a href="#inventory" class="restock-footer">A little planning goes a long way. ${icon("arrow")}</a></section><section class="panel"><div class="panel-heading"><h2>Recent activity</h2><span style="color:#9aaa96">↗</span></div><div class="activity">${activity.map((r) => `<div class="activity-entry"><span class="activity-avatar">${initials(r.teacherName)}</span><div><p><strong>${escape(r.teacherName.split(" ")[0])}</strong> ${r.status === "Pending" ? "requested" : r.status.toLowerCase()} <strong>${r.quantity} ${escape(r.supplyName)}</strong></p><time>${date(r.updatedAt || r.createdAt)}</time></div></div>`).join("") || '<p class="subtitle">Your next action starts the story.</p>'}</div><a class="text-button" href="#history" style="margin:16px 22px 20px">See all activity ${icon("arrow")}</a></section><section class="welcome-card"><div class="eyebrow">SMALL THINGS. BIG DIFFERENCE.</div><h3>A well-stocked office.<br>A well-supported team.</h3><p>Less time managing supplies.<br>More time doing what matters.</p><button class="text-button" data-action="help">Meet your workspace ${icon("arrow")}</button><span class="welcome-decoration"></span></section></aside></div>`
+    }</div><a href="#inventory" class="restock-footer">A little planning goes a long way. ${icon("arrow")}</a></section><section class="panel"><div class="panel-heading"><h2>Recent activity</h2><span style="color:#9aaa96">↗</span></div><div class="activity">${activity.map((r) => `<div class="activity-entry"><span class="activity-avatar">${initials(r.teacherName)}</span><div><p><strong>${escape(r.teacherName.split(" ")[0])}</strong> ${r.status === "Pending" ? "requested" : r.status.toLowerCase()} <strong>${r.quantity} ${escape(r.supplyName)}</strong></p><time>${date(r.updatedAt || r.createdAt)}</time></div></div>`).join("") || '<p class="subtitle">Your next action starts the story.</p>'}</div><a class="text-button activity-more" href="#history">See all activity ${icon("arrow")}</a></section></aside></div>`
   );
 }
 function inventory() {
@@ -352,12 +382,13 @@ function inventory() {
       "THE EVERYDAY ESSENTIALS",
       "Supply inventory",
       "Keep track of what’s available, what’s reserved, and what needs a top-up.",
-      actor.role === "admin"
-        ? actionButton("import-supplies", "Import CSV", "import") +
+      actionButton("export", "Export", "export") +
+        (actor.role === "admin"
+          ? actionButton("import-supplies", "Import CSV", "import") +
             actionButton("new-supply", "Add supply", "plus", true)
-        : actionButton("new-request", "New request", "plus", true),
+          : actionButton("new-request", "New request", "plus", true)),
     ) +
-    `<section class="panel"><div class="panel-heading"><div><h2>All supplies <span style="font-weight:400;color:#9baa95">(${state.supplies.length})</span></h2><p>Available stock excludes quantities reserved for pending requests.</p></div>${actionButton("export", "Export", "export")}</div>${toolbar()}<div id="inventory-results">${inventoryTable()}</div></section>`
+    `<section class="panel inventory-panel" aria-label="All supplies (${state.supplies.length})">${toolbar()}<div id="inventory-results">${inventoryTable()}</div></section>`
   );
 }
 function requests(history = false) {
@@ -401,16 +432,29 @@ function teachers() {
     `<section class="panel"><div class="panel-heading"><div><h2>Teacher directory</h2><p>${state.teachers.length} people in this workspace.</p></div></div>${toolbar("teachers")}<div class="teacher-grid">${rows.map((t) => `<article class="teacher-card"><span class="avatar">${initials(t.name)}</span><h3>${escape(t.name)}</h3><p>${escape(t.department)}</p><p>${escape(t.email || "No email added")}</p><div class="card-actions"><small>${escape(t.id)}</small><button class="text-button" data-action="edit-teacher" data-id="${escape(t.id)}">Edit profile ↗</button></div></article>`).join("")}</div>${!rows.length ? empty("No teachers found", "Try a different search or add a teacher.") : ""}</section>`
   );
 }
+// After an older account logs in with its ID: a gentle offer to choose a username. "Later"
+// hides it for this browser tab only.
+function usernamePrompt() {
+  if (!api || !token || actor.username || actor.mustChangePassword || !actor.id) return "";
+  try {
+    if (sessionStorage.getItem("officeflow-username-later") === actor.id) return "";
+  } catch {}
+  return `<div class="username-prompt" role="status"><div><strong>Choose a username</strong><span>You logged in with account ID ${escape(actor.id)}. A username is easier to remember; your password stays the same and the ID keeps working.</span></div><div class="username-prompt-actions"><button class="button" data-action="dismiss-username">Later</button><button class="button primary" data-action="choose-username">Choose username</button></div></div>`;
+}
 function connectionView() {
   if (connection === "connecting")
     return `<section class="panel" aria-busy="true"><div class="empty" role="status"><span class="spinner" aria-hidden="true"></span><strong>Connecting to OfficeFlow…</strong><p>Checking the OfficeFlow server on this computer.</p></div></section>`;
-  return `<section class="panel"><div class="empty" role="alert">${icon("alert")}<strong>OfficeFlow can't reach its server</strong><p>This page was opened from the OfficeFlow server at ${escape(location.origin)}, but the server is not answering. Check that the OfficeFlow window is still open, or start OfficeFlow again, then retry. Nothing was saved in this browser.</p><button class="button primary" data-action="retry-connection">Retry</button></div></section>`;
+  if (connection === "stopped")
+    return `<section class="stopped-view" role="status"><img src="./officeflow-icon.svg" alt="" width="56" height="56"><h1>OfficeFlow has stopped</h1><p>Your workspace is saved on this computer. You can close this tab.</p><p>To use OfficeFlow again, open it from the Start menu.</p></section>`;
+  return `<section class="panel"><div class="empty" role="alert">${icon("alert")}<strong>OfficeFlow can't reach its server</strong><p>This page was opened from OfficeFlow at ${escape(location.origin)}, but OfficeFlow is not answering. It may have been closed: open OfficeFlow from the Start menu, then select Retry. Nothing was saved in this browser.</p><button class="button primary" data-action="retry-connection">Retry</button></div></section>`;
 }
 function render() {
   page = location.hash.slice(1).split("?")[0] || "overview";
+  document.body.classList.toggle("is-stopped", connection === "stopped");
   if (connection !== "ready") {
     navigation();
-    $("#breadcrumb").textContent = "Connecting";
+    $("#breadcrumb").textContent =
+      connection === "stopped" ? "Stopped" : "Connecting";
     $("#main").innerHTML = connectionView();
     lastRenderedPage = "";
     return;
@@ -430,13 +474,15 @@ function render() {
     teachers: "Teachers",
     history: "Activity & history",
   }[page];
-  $("#main").innerHTML = {
-    overview,
-    inventory,
-    requests,
-    teachers,
-    history: () => requests(true),
-  }[page]();
+  $("#main").innerHTML =
+    usernamePrompt() +
+    {
+      overview,
+      inventory,
+      requests,
+      teachers,
+      history: () => requests(true),
+    }[page]();
   if (lastRenderedPage !== page) {
     $("#main").classList.remove("fade-in");
     void $("#main").offsetWidth;
@@ -446,11 +492,16 @@ function render() {
   animateDashboard();
   $("#sidebar").classList.remove("open");
 }
-function modal(title, subtitle, body) {
+// locked: the setup and sign-in screens, which cannot be dismissed without signing in or quitting.
+function modal(title, subtitle, body, locked = false) {
   closingAnimation?.cancel();
   closingAnimation = null;
+  authLocked = locked;
+  if (!locked) resumeAuth = null;
+  document.body.classList.toggle("auth-screen", locked);
+  $("#dialog").classList.toggle("auth-dialog", locked);
   $("#dialog-content").innerHTML =
-    `<div class="dialog-heading"><div><h2 id="dialog-title">${title}</h2><p>${subtitle}</p></div><button class="icon-button" data-action="close" aria-label="Close dialog">×</button></div><div class="dialog-body">${body}</div>`;
+    `<div class="dialog-heading">${locked ? '<img class="dialog-logo" src="./officeflow-icon.svg" alt="" width="40" height="40">' : ""}<div><h2 id="dialog-title">${title}</h2><p>${subtitle}</p></div>${locked ? "" : '<button class="icon-button" data-action="close" aria-label="Close dialog">×</button>'}</div><div class="dialog-body">${body}</div>`;
   if (!$("#dialog").open) $("#dialog").showModal();
 }
 const field = (name, label, value = "", type = "text", extra = "") =>
@@ -527,9 +578,73 @@ function help() {
 function accountDialog() {
   modal(
     "Your account",
-    `Signed in as ${escape(actor.id)}.`,
-    `<div class="identity-grid"><button class="button" data-action="change-password">Change password</button>${actor.role === "admin" ? '<button class="button" data-action="reset-password">Reset teacher password</button>' : ""}<button class="button" data-action="logout">Sign out</button></div>`,
+    actor.username
+      ? `Logged in as ${escape(actor.username)} (account ID ${escape(actor.id)}).`
+      : `Logged in with account ID ${escape(actor.id)}. Choose a username to log in with next time.`,
+    `<div class="identity-grid"><button class="button${actor.username ? "" : " primary"}" data-action="choose-username">${actor.username ? "Change username" : "Choose a username"}</button><button class="button" data-action="change-password">Change password</button>${actor.role === "admin" ? '<button class="button" data-action="reset-password">Reset teacher password</button>' : ""}<button class="button" data-action="logout">Log out</button><button class="button" data-action="quit">Quit OfficeFlow</button></div>`,
   );
+}
+const SETUP_PROBLEMS = {
+  expired:
+    "This setup screen has expired. For your security it works for 15 minutes after OfficeFlow starts.",
+  used: "This setup screen was already used.",
+  locked: "This setup screen was locked after too many attempts.",
+  unavailable: "This setup screen is no longer available.",
+  missing: "This page was opened without OfficeFlow's setup link.",
+};
+// First run: the browser creates the administrator password with OfficeFlow.exe's one-time token.
+function setupScreen(status) {
+  const problem = !setupToken ? "missing" : status === "ready" ? "" : status;
+  resumeAuth = () => setupScreen(status);
+  if (problem) {
+    modal(
+      "Set up OfficeFlow",
+      "OfficeFlow needs an administrator before anyone can log in.",
+      `<div class="setup-problem" role="alert"><strong>${escape(SETUP_PROBLEMS[problem] || SETUP_PROBLEMS.unavailable)}</strong><p>Quit OfficeFlow, then open it again from the Start menu to get a new setup screen. Nothing has been created yet.</p></div><div class="dialog-actions"><button class="button primary" data-action="quit">Quit OfficeFlow</button></div>`,
+      true,
+    );
+    return;
+  }
+  modal(
+    "Create account",
+    "Create the administrator account for this computer’s OfficeFlow workspace.",
+    `<form data-form="setup"><div class="form-grid">${field("username", "Username", "", "text", 'full autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="32" aria-describedby="username-hint"')}<p class="field-hint full" id="username-hint">3–32 characters: start with a letter, then letters, numbers, dots, dashes or underscores.</p>${field("password", "Password", "", "password", 'full autocomplete="new-password" minlength="15" maxlength="120" aria-describedby="password-hint"')}${field("confirmPassword", "Confirm password", "", "password", 'full autocomplete="new-password" minlength="15" maxlength="120"')}<p class="field-hint full" id="password-hint">Use a passphrase of 15–120 characters, such as a few unrelated words. Spaces are fine. Let your browser save it: OfficeFlow cannot show or recover it.</p></div><div class="form-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button quiet" data-action="quit">Quit OfficeFlow</button><button class="button primary" type="submit">Create account</button></div></form>`,
+    true,
+  );
+  $("#field-username").focus();
+}
+async function setupStatus() {
+  try {
+    const response = await fetch("./api/setup", {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    return response.ok ? await response.json() : null;
+  } catch {
+    return null;
+  }
+}
+function quitDialog() {
+  const back = resumeAuth;
+  modal(
+    "Quit OfficeFlow?",
+    "OfficeFlow stops on this computer and your workspace is saved. To use it again, open OfficeFlow from the Start menu.",
+    `<div class="dialog-actions"><button class="button" data-action="keep-working">Keep working</button><button class="button primary" data-action="confirm-quit">Quit OfficeFlow</button></div>`,
+  );
+  resumeAuth = back;
+}
+async function quit() {
+  await apiCall("quit", {});
+  forgetSetupToken();
+  token = "";
+  try {
+    sessionStorage.removeItem("officeflow-token");
+  } catch {}
+  connection = "stopped";
+  closingAnimation?.cancel();
+  await closeModal();
+  if ($("#dialog").open) $("#dialog").close();
+  render();
 }
 function passwordDialog(reset = false, forced = false) {
   if (reset && !state.teachers.length) {
@@ -538,7 +653,7 @@ function passwordDialog(reset = false, forced = false) {
   }
   // forced: signed in with a temporary password; the server allows nothing else until it changes.
   const end = forced
-    ? `<div class="form-error" role="alert"></div><div class="dialog-actions"><button class="button" type="button" data-action="logout">Sign out</button><button class="button primary" type="submit">Change password</button></div></form>`
+    ? `<div class="form-error" role="alert"></div><div class="dialog-actions"><button class="button" type="button" data-action="logout">Log out</button><button class="button primary" type="submit">Change password</button></div></form>`
     : formEnd(reset ? "Reset password" : "Change password");
   modal(
     forced
@@ -547,11 +662,11 @@ function passwordDialog(reset = false, forced = false) {
         ? "Reset teacher password"
         : "Change password",
     forced
-      ? "You signed in with a temporary password. Choose a new one of 12-120 characters to continue."
+      ? "You logged in with a temporary password. Choose your own passphrase of 15–120 characters to continue."
       : reset
-        ? "Use 12-120 characters. This is a temporary password: the teacher must choose their own at next sign-in. Their sessions end now."
-        : "Use 12-120 characters. All sessions for this account will end after saving.",
-    `<form data-form="${reset ? "reset-password" : "change-password"}"><div class="form-grid">${reset ? `<div class="field full"><label for="field-id">Teacher</label><select id="field-id" name="id">${state.teachers.map((t) => `<option value="${escape(t.id)}">${escape(t.name)} (${escape(t.id)})</option>`).join("")}</select></div>` : field("currentPassword", forced ? "Temporary password" : "Current password", "", "password", 'full autocomplete="current-password"')}${field("newPassword", "New password", "", "password", 'full minlength="12" autocomplete="new-password"')}${field("confirmPassword", "Confirm new password", "", "password", 'full minlength="12" autocomplete="new-password"')}</div>${end}`,
+        ? "Use 15–120 characters. This is a temporary password: the teacher must choose their own at their next login. Their sessions end now."
+        : "Use a passphrase of 15–120 characters; spaces are fine. All sessions for this account end after saving.",
+    `<form data-form="${reset ? "reset-password" : "change-password"}"><div class="form-grid">${reset ? `<div class="field full"><label for="field-id">Teacher</label><select id="field-id" name="id">${state.teachers.map((t) => `<option value="${escape(t.id)}">${escape(t.name)} (${escape(t.id)})</option>`).join("")}</select></div>` : field("currentPassword", forced ? "Temporary password" : "Current password", "", "password", 'full autocomplete="current-password"')}${field("newPassword", "New password", "", "password", 'full minlength="15" autocomplete="new-password"')}${field("confirmPassword", "Confirm new password", "", "password", 'full minlength="15" autocomplete="new-password"')}</div>${end}`,
   );
 }
 function clearSession() {
@@ -563,11 +678,32 @@ function clearSession() {
   tablePage = 1;
   render();
 }
-function loginDialog() {
+function loginDialog(name = "") {
+  resumeAuth = () => loginDialog(name);
   modal(
-    "Welcome to OfficeFlow",
-    "Sign in to your Java workspace.",
-    `<form data-form="login"><div class="form-grid">${field("id", "Account ID", "", "text", "full")}${field("password", "Password", "", "password", "full")}</div>${formEnd("Sign in")}`,
+    "Log in",
+    "Log in to OfficeFlow on this computer.",
+    `<form data-form="login"><div class="form-grid">${field("username", "Username", name, "text", 'full autocomplete="username" autocapitalize="none" spellcheck="false" aria-describedby="login-hint"')}<p class="field-hint full" id="login-hint">Accounts created before usernames can use their account ID, such as 001.</p>${field("password", "Password", "", "password", 'full autocomplete="current-password"')}</div><div class="form-error" role="alert"></div><button type="button" class="text-button forgot-link" data-action="forgot-login">Forgot your login?</button><div class="dialog-actions"><button type="button" class="button quiet" data-action="quit">Quit OfficeFlow</button><button class="button primary" type="submit">Log in</button></div></form>`,
+    true,
+  );
+  $(name ? "#field-password" : "#field-username").focus();
+}
+// General reminders only: nothing here depends on, or reveals, any particular account.
+function forgotLoginDialog() {
+  modal(
+    "Forgot your login?",
+    "A few reminders that usually help.",
+    `<ul class="login-reminders"><li><strong>Username.</strong> Use the username you chose when the account was created, or later under Account. Usernames are not case-sensitive.</li><li><strong>Account ID.</strong> Accounts from before usernames can still log in with their account ID. The first administrator’s ID is <code>001</code>; teachers use the ID their administrator gave them.</li><li><strong>Saved passwords.</strong> Your browser or password manager may have saved the password for 127.0.0.1. Look there under OfficeFlow or 127.0.0.1.</li><li><strong>Teachers.</strong> Your administrator can set a temporary password for you.</li></ul><div class="dialog-actions"><button class="button primary" data-action="back-to-login">Back to log in</button></div>`,
+    true,
+  );
+}
+function usernameDialog() {
+  modal(
+    actor.username ? "Change username" : "Choose a username",
+    actor.username
+      ? "Your username is how you log in. Your password stays the same."
+      : `You log in with account ID ${escape(actor.id)} today. A username is easier to remember; the ID keeps working too.`,
+    `<form data-form="username"><div class="form-grid">${field("username", "Username", actor.username || "", "text", 'full autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="32"')}<p class="field-hint full">3–32 characters: start with a letter, then letters, numbers, dots, dashes or underscores. It must not be in use.</p></div>${formEnd("Save username")}`,
   );
 }
 function download() {
@@ -647,6 +783,44 @@ document.addEventListener("click", async (event) => {
       $(".pagination").focus();
       return;
     }
+    if (action === "quit") {
+      quitDialog();
+      return;
+    }
+    if (action === "forgot-login") {
+      forgotLoginDialog();
+      return;
+    }
+    if (action === "back-to-login") {
+      loginDialog();
+      return;
+    }
+    if (action === "choose-username") {
+      usernameDialog();
+      return;
+    }
+    if (action === "dismiss-username") {
+      try {
+        sessionStorage.setItem("officeflow-username-later", actor.id);
+      } catch {}
+      render();
+      return;
+    }
+    if (action === "keep-working") {
+      if (resumeAuth) resumeAuth();
+      else closeModal();
+      return;
+    }
+    if (action === "confirm-quit") {
+      button.disabled = true;
+      button.innerHTML = '<span class="spinner" aria-hidden="true"></span> Stopping…';
+      try {
+        await quit();
+      } finally {
+        button.disabled = false;
+      }
+      return;
+    }
     if (action === "retry-connection") connect();
     else if (action === "change-password") passwordDialog();
     else if (action === "reset-password") passwordDialog(true);
@@ -654,7 +828,7 @@ document.addEventListener("click", async (event) => {
       await apiCall("logout", {});
       clearSession();
       loginDialog();
-      toast("Signed out. Your session has ended.");
+      toast("Logged out. Your session has ended.");
     } else if (action === "close") closeModal();
     else if (action === "new-supply" || action === "edit-supply")
       supplyDialog(id);
@@ -711,6 +885,43 @@ document.addEventListener("submit", async (event) => {
   let passwords = [];
   try {
     const data = Object.fromEntries(new FormData(form));
+    if (form.dataset.form === "setup") {
+      if (data.password !== data.confirmPassword)
+        throw Error("The passwords do not match.");
+      let response;
+      try {
+        response = await apiCall("setup", {
+          token: setupToken,
+          username: data.username,
+          password: data.password,
+          confirmPassword: data.confirmPassword,
+        });
+      } catch (error) {
+        if (error.code !== "SETUP_TOKEN_INVALID") throw error;
+        setupScreen((await setupStatus())?.status || "unavailable");
+        return;
+      }
+      forgetSetupToken();
+      token = response.token;
+      sessionStorage.setItem("officeflow-token", token);
+      actor = response.actor;
+      state = await apiCall("state");
+      closeModal();
+      render();
+      toast(
+        `Your account is ready. You’re logged in as ${actor.username}.`,
+        "success",
+      );
+      return;
+    }
+    if (form.dataset.form === "username") {
+      const response = await apiCall("username", { username: data.username });
+      actor = { ...actor, username: response.actor.username };
+      closeModal();
+      render();
+      toast(`Username saved. Log in as ${actor.username} next time.`, "success");
+      return;
+    }
     if (form.dataset.form === "login") {
       const response = await apiCall("login", data);
       token = response.token;
@@ -731,7 +942,7 @@ document.addEventListener("submit", async (event) => {
       if (!reset) {
         clearSession();
         loginDialog();
-        toast("Password changed. Sign in with your new password.");
+        toast("Password changed. Log in with your new password.");
         return;
       }
       closeModal();
@@ -760,10 +971,18 @@ document.addEventListener("submit", async (event) => {
     } else {
       if ("edit" in data) data.edit = data.edit === "true";
       passwords = await save(form.dataset.form, data);
+      // Briefly highlights the saved row once the table is drawn again.
+      if (form.dataset.form === "saveSupply") justSaved = data.name;
     }
     closeModal();
     render();
-    toast("All set. Your workspace is up to date.");
+    justSaved = "";
+    toast(
+      form.dataset.form === "saveSupply"
+        ? `Saved “${data.name}”. Your inventory is up to date.`
+        : "All set. Your workspace is up to date.",
+      "success",
+    );
     if (passwords.length) temporaryPasswordsDialog(passwords);
   } catch (error) {
     errorBox.textContent = error.message;
@@ -832,7 +1051,7 @@ $("#switch-role").onclick = identities;
 $("#help").onclick = help;
 $("#menu-toggle").onclick = () => $("#sidebar").classList.toggle("open");
 $("#dialog").addEventListener("click", (e) => {
-  if (e.target === $("#dialog")) {
+  if (e.target === $("#dialog") && !authLocked) {
     const r = $("#dialog").getBoundingClientRect();
     if (
       e.clientX < r.left ||
@@ -894,7 +1113,13 @@ async function connect() {
   connection = "ready";
   if (!token) {
     clearSession();
-    loginDialog();
+    // A new workspace shows "Set up OfficeFlow"; returning users land on sign-in.
+    const setup = await setupStatus();
+    if (setup?.required) setupScreen(setup.status);
+    else {
+      forgetSetupToken();
+      loginDialog();
+    }
     return;
   }
   try {
@@ -923,6 +1148,8 @@ if (JAVA_MODE) {
     "Your OfficeFlow workspace · saved on this computer · server-checked access";
   $("#switch-role").textContent = "Account";
   $("#reset-demo").hidden = true;
+  $("#quit-officeflow").hidden = false;
+  $("#quit-officeflow").onclick = quitDialog;
   document.documentElement.dataset.javaReady = "";
   connect();
 } else {
@@ -1031,6 +1258,10 @@ function networkLoading(path) {
 
 async function closeModal() {
   const dialog = $("#dialog");
+  authLocked = false;
+  resumeAuth = null;
+  document.body.classList.remove("auth-screen");
+  dialog.classList.remove("auth-dialog");
   if (!dialog.open) return;
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
     dialog.close();
@@ -1046,7 +1277,11 @@ async function closeModal() {
   );
   closingAnimation = animation;
   try {
-    await animation.finished;
+    // A page that is not being painted may never finish the animation; close anyway.
+    await Promise.race([
+      animation.finished,
+      new Promise((resolve) => setTimeout(resolve, 400)),
+    ]);
   } catch {
     return;
   }
@@ -1057,5 +1292,5 @@ async function closeModal() {
 }
 $("#dialog").addEventListener("cancel", (event) => {
   event.preventDefault();
-  closeModal();
+  if (!authLocked) closeModal();
 });

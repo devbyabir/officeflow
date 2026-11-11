@@ -1,0 +1,36 @@
+OfficeFlow - third-party notices
+================================
+
+OfficeFlow's own code and design: Copyright (c) 2026 devbyabir. All rights
+reserved. See LICENSE.txt.
+
+officeflow.jar also contains the following third-party software, each under
+its own licence.
+
+
+Gson 2.11.0
+-----------
+Copyright Google LLC.
+Licence: Apache License 2.0 - licenses\Apache-2.0.txt
+Source code: https://github.com/google/gson
+
+
+H2 Database Engine 2.3.232
+--------------------------
+Copyright H2 Group.
+H2 is dual licensed under the Mozilla Public License 2.0 and the Eclipse
+Public License 1.0. It is used here under the Mozilla Public License 2.0 -
+licenses\MPL-2.0.txt
+Source code: https://github.com/h2database/h2database (tag version-2.3.232)
+
+
+Inter typeface
+--------------
+SIL Open Font License 1.1. Not included: the web pages load it from Google
+Fonts when the computer is online, and use system fonts otherwise.
+
+
+Java
+----
+OfficeFlow runs on the Java runtime installed on your computer, which is not
+part of this ZIP and comes with its own licence.
