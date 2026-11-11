@@ -10,7 +10,7 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $base = "http://127.0.0.1:8080"
-$password = "Installer test password 3"
+$password = "install-pass"
 $appId = "{694B07A4-E3EF-4976-94E2-2A9FAB580EE2}_is1"
 $installDir = Join-Path $env:LOCALAPPDATA "Programs\OfficeFlow"
 $dataDir = Join-Path $env:LOCALAPPDATA "OfficeFlow"
@@ -126,7 +126,7 @@ try {
   $start = Start-FromShortcut
   Assert ($start.Url -match '^http://127\.0\.0\.1:8080/#setup=([A-Za-z0-9_-]{32,128})$') "the first start opens the setup screen ($($start.Url))"
   $token = $Matches[1]
-  $created = Invoke-Api "/api/setup" @{ token = $token; username = "Installer.Admin"; password = $password; confirmPassword = $password }
+  $created = Invoke-Api "/api/setup" @{ token = $token; username = "Installer.Admin"; password = $password; confirmPassword = $password; hint = "office clue" }
   Assert ($created.actor.username -eq "installer.admin" -and $created.token) "Create account signs the administrator in"
   Assert ((Invoke-Api "/api/setup").status -eq "done") "setup is closed after the first administrator"
   Assert (Test-Path $database) "the workspace is created at $database"

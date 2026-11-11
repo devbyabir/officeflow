@@ -40,9 +40,19 @@ reach it. Your records are saved in a database file on that computer.
 The Windows installer is on the [OfficeFlow 1.0.0 release page](https://github.com/devbyabir/officeflow/releases/tag/v1.0.0).
 You can also try the [Live Demo](https://devbyabir.github.io/officeflow/) with
 sample data before downloading.
+The published 1.0.0 installer predates the account hint and recovery flow in
+the current source. Those changes require a new Windows release before people
+who download the app can use them.
 
 The installer includes its own Java runtime, so nothing else needs to be
 installed first. It needs Windows 10 or 11 (x64).
+
+**Windows security:** the published 1.0.0 installer is unsigned. Windows 11
+Smart App Control can block the installer, launcher, or uninstaller because it
+cannot verify the publisher. GitHub hosting and SHA-256 checksums do not make
+an unsigned executable trusted. A release for Smart App Control On needs
+trusted code signing and a clean Windows 11 download/install test; do not
+disable Smart App Control to install OfficeFlow.
 
 1. Read the [OfficeFlow end-user terms](TERMS.md). Then open
    [Releases](https://github.com/devbyabir/officeflow/releases/latest) and download
@@ -90,7 +100,7 @@ It finds them from any working directory as long as the JAR stays in
 
 ### 2. First start: create your workspace
 
-Choose an administrator password of 15–120 characters. `Read-Host` keeps it out
+Choose an administrator password of 6–12 characters. `Read-Host` keeps it out
 of your PowerShell history:
 
 ```powershell
@@ -128,19 +138,20 @@ closed or stopped. Start OfficeFlow again and press **Retry**.
 - Accounts from before usernames keep logging in with their account ID (the
   first administrator is `001`), and keep their passwords. After logging in,
   OfficeFlow offers to add a username; the ID keeps working.
-- New passwords are passphrases of 15–120 characters, with no rules about digits
-  or symbols. Passwords set earlier under the 12-character rule stay valid.
-- **Forgot your login?** on the Log in screen lists general reminders only.
-  OfficeFlow has no password hints and no self-service reset: an administrator
-  can set a temporary password for a teacher.
+- New passwords use 6–12 characters. Existing longer passwords stay valid when
+  signing in. Use a unique password, especially on a shared computer.
+- **Forgot username or password?** shows the hint you chose. It cannot contain
+  your full username or password. A recovery code is shown once when you set or
+  change a password; save it somewhere safe outside this computer. The code
+  resets your password and is replaced after use. A hint alone cannot reset it.
 
 ### Teachers and passwords
 
 - Add teachers under **Teachers** (one at a time or by CSV import). OfficeFlow
   creates a random temporary password for each new teacher and shows it **once**.
   Give it to the teacher privately.
-- At their first login, a teacher must choose their own password (15–120
-  characters) before they can see or change anything.
+- At their first login, a teacher must choose their own password (6–12
+  characters), a hint, and save a recovery code before they can use the workspace.
 - If a teacher forgets their password, open **Account → Reset teacher password**.
   The password you set is temporary in the same way.
 - Everyone can choose a username and change their own password under **Account**.

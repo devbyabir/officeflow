@@ -40,7 +40,7 @@ public final class Store implements AutoCloseable {
         } catch (IllegalArgumentException exception) {
           if (!allowSetup)
             throw new IllegalStateException(
-                "A new workspace needs an administrator password of 15-120 characters in"
+                "A new workspace needs an administrator password of 6-12 characters in"
                     + " OFFICEFLOW_ADMIN_PASSWORD.");
         }
       }
@@ -56,14 +56,17 @@ public final class Store implements AutoCloseable {
    * Creates administrator 001 once. Fails if any administrator already exists, so a setup
    * request can never replace an existing account or its password.
    */
-  public void createFirstAdministrator(String username, String password) throws SQLException {
+  public void createFirstAdministrator(String username, String password, String hint, String code)
+      throws SQLException {
     String name = Accounts.normalizeUsername(username);
     Accounts.validatePassword(password == null ? "" : password);
+    String reminder = Accounts.validateHint(hint, name, password);
     connection.setAutoCommit(false);
     try {
       if (hasAdministrator()) throw new IllegalStateException("OfficeFlow is already set up.");
       addCredential("001", "admin", password, false);
       setUsername("001", name);
+      setRecovery("001", reminder, code);
       connection.commit();
     } catch (SQLException | RuntimeException exception) {
       connection.rollback();
@@ -115,6 +118,9 @@ public final class Store implements AutoCloseable {
               + " NOT NULL");
       // Usernames arrived later: older accounts have none and keep signing in with their ID.
       statement.execute("ALTER TABLE credentials ADD COLUMN IF NOT EXISTS username VARCHAR(32)");
+      statement.execute("ALTER TABLE credentials ADD COLUMN IF NOT EXISTS hint VARCHAR(120)");
+      statement.execute(
+          "ALTER TABLE credentials ADD COLUMN IF NOT EXISTS recovery_hash VARCHAR(200)");
       statement.execute(
           "CREATE UNIQUE INDEX IF NOT EXISTS credentials_username ON credentials(username)");
     }
@@ -171,10 +177,44 @@ public final class Store implements AutoCloseable {
     String name = Accounts.normalizeUsername(username);
     if (nameTaken(name, id))
       throw new IllegalArgumentException("That username is taken. Choose another one.");
+    String reminder = hint(id);
+    if (reminder != null) Accounts.validateHint(reminder, name, "");
     try (PreparedStatement statement =
         connection.prepareStatement("UPDATE credentials SET username = ? WHERE id = ?")) {
       statement.setString(1, name);
       statement.setString(2, id);
+      if (statement.executeUpdate() != 1)
+        throw new IllegalArgumentException("Account no longer exists.");
+    }
+  }
+
+  public String hint(String id) throws SQLException {
+    try (PreparedStatement statement =
+        connection.prepareStatement("SELECT hint FROM credentials WHERE id = ?")) {
+      statement.setString(1, id);
+      try (ResultSet result = statement.executeQuery()) {
+        return result.next() ? result.getString(1) : null;
+      }
+    }
+  }
+
+  public String recoveryHash(String id) throws SQLException {
+    try (PreparedStatement statement =
+        connection.prepareStatement("SELECT recovery_hash FROM credentials WHERE id = ?")) {
+      statement.setString(1, id);
+      try (ResultSet result = statement.executeQuery()) {
+        return result.next() ? result.getString(1) : null;
+      }
+    }
+  }
+
+  public void setRecovery(String id, String hint, String code) throws SQLException {
+    try (PreparedStatement statement =
+        connection.prepareStatement(
+            "UPDATE credentials SET hint = ?, recovery_hash = ? WHERE id = ?")) {
+      statement.setString(1, hint);
+      statement.setString(2, Accounts.hash(code.toCharArray()));
+      statement.setString(3, id);
       if (statement.executeUpdate() != 1)
         throw new IllegalArgumentException("Account no longer exists.");
     }
@@ -271,13 +311,17 @@ public final class Store implements AutoCloseable {
    * Stores a new password. {@code mustChange} marks a temporary password that its owner must
    * replace before using the workspace.
    */
-  public void updatePassword(String id, String password, boolean mustChange) throws SQLException {
+  public void updatePassword(String id, String password, boolean mustChange, String hint, String code)
+      throws SQLException {
     try (PreparedStatement statement =
         connection.prepareStatement(
-            "UPDATE credentials SET password_hash = ?, must_change = ? WHERE id = ?")) {
+            "UPDATE credentials SET password_hash = ?, must_change = ?, hint = ?, recovery_hash = ?"
+                + " WHERE id = ?")) {
       statement.setString(1, Accounts.hash(password.toCharArray()));
       statement.setBoolean(2, mustChange);
-      statement.setString(3, id);
+      statement.setString(3, hint);
+      statement.setString(4, code == null ? null : Accounts.hash(code.toCharArray()));
+      statement.setString(5, id);
       if (statement.executeUpdate() != 1)
         throw new IllegalArgumentException("Account no longer exists.");
     }

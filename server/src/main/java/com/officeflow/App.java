@@ -49,6 +49,8 @@ public final class App {
   private final HttpServer server;
   private long loginWindow;
   private int failedLogins;
+  private long recoveryWindow;
+  private int recoveryRequests;
   /** Present only while the workspace has no administrator and browser setup is enabled. */
   private volatile SetupToken setup;
   /** Ends the Java process; the shutdown hook closes the database and logs a clean stop. */
@@ -112,6 +114,7 @@ public final class App {
     // Checked before the token is used up, so a mistyped entry can simply be corrected.
     String username = Accounts.normalizeUsername(value(data, "username"));
     Accounts.validatePassword(password);
+    Accounts.validateHint(value(data, "hint"), username, password);
     if (data.has("confirmPassword") && !password.equals(value(data, "confirmPassword")))
       throw new IllegalArgumentException("The passwords do not match.");
     SetupToken token = setup;
@@ -121,12 +124,14 @@ public final class App {
       json(exchange, 403, result);
       return;
     }
-    service.createFirstAdministrator(username, password);
+    String recoveryCode =
+        service.createFirstAdministrator(username, password, value(data, "hint"));
     setup = null;
     // The new administrator is signed in at once.
     Accounts.Account account = new Accounts.Administrator("001");
     JsonObject result = object("token", newSession(account, false));
     result.add("actor", actor(account, false));
+    result.addProperty("recoveryCode", recoveryCode);
     result.addProperty("message", "Your account is ready.");
     json(exchange, 200, result);
   }
@@ -209,6 +214,16 @@ public final class App {
     }
   }
 
+  private synchronized void limitRecoveryRequests() {
+    long current = System.currentTimeMillis();
+    if (current - recoveryWindow > 60000) {
+      recoveryWindow = current;
+      recoveryRequests = 0;
+    }
+    if (++recoveryRequests > 10)
+      throw new SecurityException("Too many recovery attempts. Try again in a minute.");
+  }
+
   private void api(HttpExchange exchange) throws IOException {
     try {
       String path = exchange.getRequestURI().getPath();
@@ -250,6 +265,26 @@ public final class App {
         json(exchange, 200, result);
         return;
       }
+      if (path.equals("/api/recovery/hint") || path.equals("/api/recovery/reset")) {
+        if (!fromThisComputer(exchange)) {
+          json(exchange, 403, object("error", "Only available on this computer."));
+          return;
+        }
+        JsonObject data = body(exchange);
+        limitRecoveryRequests();
+        if (path.endsWith("/hint")) {
+          json(exchange, 200, object("hint", service.recoveryHint(value(data, "username"))));
+        } else {
+          String[] recovered =
+              service.recover(
+                  value(data, "recoveryCode"), value(data, "newPassword"), value(data, "hint"));
+          invalidateSessions(recovered[2]);
+          JsonObject result = object("username", recovered[0]);
+          result.addProperty("recoveryCode", recovered[1]);
+          json(exchange, 200, result);
+        }
+        return;
+      }
       Session session = session(exchange);
       Accounts.Account account = session.account();
       if (session.mustChange() && !TEMPORARY_PASSWORD_PATHS.contains(path))
@@ -266,9 +301,22 @@ public final class App {
         json(exchange, 200, result);
       } else if (path.equals("/api/password/change")) {
         JsonObject data = body(exchange);
-        service.changePassword(account, value(data, "currentPassword"), value(data, "newPassword"));
+        String code =
+            service.changePassword(
+                account,
+                value(data, "currentPassword"),
+                value(data, "newPassword"),
+                value(data, "hint"));
         invalidateSessions(account.id());
-        json(exchange, 200, object("message", "Password changed. Sign in again."));
+        JsonObject result = object("message", "Password changed. Sign in again.");
+        result.addProperty("recoveryCode", code);
+        json(exchange, 200, result);
+      } else if (path.equals("/api/recovery/update")) {
+        JsonObject data = body(exchange);
+        String code =
+            service.updateRecovery(
+                account, value(data, "currentPassword"), value(data, "hint"));
+        json(exchange, 200, object("recoveryCode", code));
       } else if (path.equals("/api/password/reset")) {
         JsonObject data = body(exchange);
         String id = value(data, "id");

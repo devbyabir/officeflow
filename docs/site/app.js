@@ -77,6 +77,7 @@ let closingAnimation;
 let authLocked = false,
   resumeAuth = null,
   justSaved = "";
+let recoveryDestination = "app";
 // OfficeFlow.exe opens the first run as /#setup=<token>. A URL fragment never reaches the
 // server or its logs; the token is kept only in this tab and removed from the address bar.
 let setupToken = "";
@@ -505,7 +506,7 @@ function modal(title, subtitle, body, locked = false) {
   if (!$("#dialog").open) $("#dialog").showModal();
 }
 const field = (name, label, value = "", type = "text", extra = "") =>
-  `<div class="field ${extra.includes("full") ? "full" : ""}"><label for="field-${name}">${label}</label><input id="field-${name}" name="${name}" type="${type}" value="${escape(value)}" ${type === "number" ? 'min="0" max="1000000" step="1"' : 'maxlength="120"'} ${name === "email" ? "" : "required"} ${extra.replace("full", "")}></div>`;
+  `<div class="field ${extra.includes("full") ? "full" : ""}"><label for="field-${name}">${label}</label><input id="field-${name}" name="${name}" type="${type}" value="${escape(value)}" ${type === "number" ? 'min="0" max="1000000" step="1"' : extra.includes("maxlength=") ? "" : 'maxlength="120"'} ${name === "email" ? "" : "required"} ${extra.replace("full", "")}></div>`;
 const formEnd = (label, deleteAction = "", id = "") =>
   `<div class="form-error" role="alert"></div><div class="dialog-actions">${deleteAction ? `<button type="button" class="button danger" style="margin-right:auto" data-action="${deleteAction}" data-id="${escape(id)}">Delete</button>` : ""}<button class="button" type="button" data-action="close">Cancel</button><button class="button primary" type="submit">${label}</button></div></form>`;
 function supplyDialog(id) {
@@ -581,7 +582,7 @@ function accountDialog() {
     actor.username
       ? `Logged in as ${escape(actor.username)} (account ID ${escape(actor.id)}).`
       : `Logged in with account ID ${escape(actor.id)}. Choose a username to log in with next time.`,
-    `<div class="identity-grid"><button class="button${actor.username ? "" : " primary"}" data-action="choose-username">${actor.username ? "Change username" : "Choose a username"}</button><button class="button" data-action="change-password">Change password</button>${actor.role === "admin" ? '<button class="button" data-action="reset-password">Reset teacher password</button>' : ""}<button class="button" data-action="logout">Log out</button><button class="button" data-action="quit">Quit OfficeFlow</button></div>`,
+    `<div class="identity-grid"><button class="button${actor.username ? "" : " primary"}" data-action="choose-username">${actor.username ? "Change username" : "Choose a username"}</button><button class="button" data-action="change-password">Change password</button><button class="button" data-action="recovery-options">Hint & recovery code</button>${actor.role === "admin" ? '<button class="button" data-action="reset-password">Reset teacher password</button>' : ""}<button class="button" data-action="logout">Log out</button><button class="button" data-action="quit">Quit OfficeFlow</button></div>`,
   );
 }
 const SETUP_PROBLEMS = {
@@ -608,7 +609,7 @@ function setupScreen(status) {
   modal(
     "Create account",
     "Create the administrator account for this computer’s OfficeFlow workspace.",
-    `<form data-form="setup"><div class="form-grid">${field("username", "Username", "", "text", 'full autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="32" aria-describedby="username-hint"')}<p class="field-hint full" id="username-hint">3–32 characters: start with a letter, then letters, numbers, dots, dashes or underscores.</p>${field("password", "Password", "", "password", 'full autocomplete="new-password" minlength="15" maxlength="120" aria-describedby="password-hint"')}${field("confirmPassword", "Confirm password", "", "password", 'full autocomplete="new-password" minlength="15" maxlength="120"')}<p class="field-hint full" id="password-hint">Use a passphrase of 15–120 characters, such as a few unrelated words. Spaces are fine. Let your browser save it: OfficeFlow cannot show or recover it.</p></div><div class="form-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button quiet" data-action="quit">Quit OfficeFlow</button><button class="button primary" type="submit">Create account</button></div></form>`,
+    `<form data-form="setup"><div class="form-grid">${field("username", "Username", "", "text", 'full placeholder="e.g. yourname" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="32" aria-describedby="username-hint"')}<p class="field-hint full" id="username-hint">3–32 characters. Start with a letter; then use letters, numbers, dots, dashes or underscores.</p>${field("password", "Password", "", "password", 'full placeholder="6–12 characters" autocomplete="new-password" minlength="6" maxlength="12" aria-describedby="password-hint"')}${field("confirmPassword", "Confirm password", "", "password", 'full placeholder="Repeat your password" autocomplete="new-password" minlength="6" maxlength="12"')}<p class="field-hint full" id="password-hint">Use 6–12 characters. Longer passwords offer more protection.</p>${field("hint", "Your hint", "", "text", 'full placeholder="A reminder only you understand" minlength="4" maxlength="120" aria-describedby="hint-help"')}<p class="field-hint full" id="hint-help">Do not write your complete username or password. You can use a short beginning or ending clue. Anyone at this computer may see this hint.</p></div><div class="form-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button quiet" data-action="quit">Quit OfficeFlow</button><button class="button primary" type="submit">Create account</button></div></form>`,
     true,
   );
   $("#field-username").focus();
@@ -662,11 +663,28 @@ function passwordDialog(reset = false, forced = false) {
         ? "Reset teacher password"
         : "Change password",
     forced
-      ? "You logged in with a temporary password. Choose your own passphrase of 15–120 characters to continue."
+      ? "You logged in with a temporary password. Choose a 6–12 character password and a hint to continue."
       : reset
-        ? "Use 15–120 characters. This is a temporary password: the teacher must choose their own at their next login. Their sessions end now."
-        : "Use a passphrase of 15–120 characters; spaces are fine. All sessions for this account end after saving.",
-    `<form data-form="${reset ? "reset-password" : "change-password"}"><div class="form-grid">${reset ? `<div class="field full"><label for="field-id">Teacher</label><select id="field-id" name="id">${state.teachers.map((t) => `<option value="${escape(t.id)}">${escape(t.name)} (${escape(t.id)})</option>`).join("")}</select></div>` : field("currentPassword", forced ? "Temporary password" : "Current password", "", "password", 'full autocomplete="current-password"')}${field("newPassword", "New password", "", "password", 'full minlength="15" autocomplete="new-password"')}${field("confirmPassword", "Confirm new password", "", "password", 'full minlength="15" autocomplete="new-password"')}</div>${end}`,
+        ? "Use 6–12 characters. The teacher must choose their own password at next login. Their sessions end now."
+        : "Choose 6–12 characters and a hint. All sessions for this account end after saving.",
+    `<form data-form="${reset ? "reset-password" : "change-password"}"><div class="form-grid">${reset ? `<div class="field full"><label for="field-id">Teacher</label><select id="field-id" name="id">${state.teachers.map((t) => `<option value="${escape(t.id)}">${escape(t.name)} (${escape(t.id)})</option>`).join("")}</select></div>` : field("currentPassword", forced ? "Temporary password" : "Current password", "", "password", 'full autocomplete="current-password"')}${field("newPassword", "New password", "", "password", 'full minlength="6" maxlength="12" autocomplete="new-password" placeholder="6–12 characters"')}${field("confirmPassword", "Confirm new password", "", "password", 'full minlength="6" maxlength="12" autocomplete="new-password" placeholder="Repeat your password"')}${reset ? "" : `${field("hint", "Your hint", "", "text", 'full minlength="4" maxlength="120" placeholder="A reminder only you understand"')}<p class="field-hint full">A hint cannot include your complete username or password. Save the new recovery code shown next.</p>`}</div>${end}`,
+  );
+}
+function showRecoveryCode(code, username, destination = "app") {
+  recoveryDestination = destination;
+  resumeAuth = () => showRecoveryCode(code, username, destination);
+  modal(
+    "Save your recovery code",
+    `For ${escape(username)} · shown only this once`,
+    `<div class="recovery-card"><p>Keep this code somewhere safe, away from this computer. It can reset your password even if you forget your username.</p><code id="new-recovery-code">${escape(code)}</code><p>Using this code replaces it with a new one. Your hint alone cannot reset your password.</p></div><div class="dialog-actions"><button class="button primary" data-action="recovery-done">I saved my code</button></div>`,
+    true,
+  );
+}
+function recoveryOptionsDialog() {
+  modal(
+    "Hint & recovery code",
+    "Update your reminder and replace your recovery code.",
+    `<form data-form="recovery-options"><div class="form-grid">${field("currentPassword", "Current password", "", "password", 'full autocomplete="current-password"')}${field("hint", "New hint", "", "text", 'full minlength="4" maxlength="120" placeholder="A reminder only you understand"')}<p class="field-hint full">Do not include your complete username or password. The replacement code will be shown only once.</p></div>${formEnd("Save & show new code")}`,
   );
 }
 function clearSession() {
@@ -683,17 +701,27 @@ function loginDialog(name = "") {
   modal(
     "Log in",
     "Log in to OfficeFlow on this computer.",
-    `<form data-form="login"><div class="form-grid">${field("username", "Username", name, "text", 'full autocomplete="username" autocapitalize="none" spellcheck="false" aria-describedby="login-hint"')}<p class="field-hint full" id="login-hint">Accounts created before usernames can use their account ID, such as 001.</p>${field("password", "Password", "", "password", 'full autocomplete="current-password"')}</div><div class="form-error" role="alert"></div><button type="button" class="text-button forgot-link" data-action="forgot-login">Forgot your login?</button><div class="dialog-actions"><button type="button" class="button quiet" data-action="quit">Quit OfficeFlow</button><button class="button primary" type="submit">Log in</button></div></form>`,
+    `<form data-form="login"><div class="form-grid">${field("username", "Username", name, "text", 'full placeholder="e.g. yourname" autocomplete="username" autocapitalize="none" spellcheck="false" aria-describedby="login-hint"')}<p class="field-hint full" id="login-hint">Older accounts can also use their account ID, such as 001.</p>${field("password", "Password", "", "password", 'full placeholder="Your password" autocomplete="current-password"')}</div><div class="form-error" role="alert"></div><button type="button" class="text-button forgot-link" data-action="forgot-login">Forgot username or password?</button><div class="dialog-actions"><button type="button" class="button quiet" data-action="quit">Quit OfficeFlow</button><button class="button primary" type="submit">Log in</button></div></form>`,
     true,
   );
   $(name ? "#field-password" : "#field-username").focus();
 }
 // General reminders only: nothing here depends on, or reveals, any particular account.
 function forgotLoginDialog() {
+  resumeAuth = forgotLoginDialog;
   modal(
-    "Forgot your login?",
-    "A few reminders that usually help.",
-    `<ul class="login-reminders"><li><strong>Username.</strong> Use the username you chose when the account was created, or later under Account. Usernames are not case-sensitive.</li><li><strong>Account ID.</strong> Accounts from before usernames can still log in with their account ID. The first administrator’s ID is <code>001</code>; teachers use the ID their administrator gave them.</li><li><strong>Saved passwords.</strong> Your browser or password manager may have saved the password for 127.0.0.1. Look there under OfficeFlow or 127.0.0.1.</li><li><strong>Teachers.</strong> Your administrator can set a temporary password for you.</li></ul><div class="dialog-actions"><button class="button primary" data-action="back-to-login">Back to log in</button></div>`,
+    "Forgot username or password?",
+    "Try your hint, or use the recovery code saved when you created your account.",
+    `<form data-form="hint-lookup"><div class="form-grid">${field("username", "Username or account ID", "", "text", 'full placeholder="e.g. yourname or 001" autocomplete="username"')}<p class="field-hint full">The first administrator's account ID is 001. Your hint may be seen by anyone at this computer.</p></div><div class="form-error" role="alert"></div><div class="hint-result" id="hint-result" role="status" hidden></div><div class="dialog-actions"><button class="button" type="button" data-action="back-to-login">Back</button><button class="button primary" type="submit">Show my hint</button></div></form><div class="recovery-divider">Still need help?</div><button class="button recovery-open" type="button" data-action="open-recovery">Use recovery code</button>`,
+    true,
+  );
+}
+function recoveryDialog() {
+  resumeAuth = recoveryDialog;
+  modal(
+    "Use your recovery code",
+    "The code identifies your account even if you forgot its username.",
+    `<form data-form="recover"><div class="form-grid">${field("recoveryCode", "Recovery code", "", "text", 'full placeholder="Paste your saved code" maxlength="80" autocomplete="off" spellcheck="false"')}${field("newPassword", "New password", "", "password", 'full minlength="6" maxlength="12" autocomplete="new-password" placeholder="6–12 characters"')}${field("confirmPassword", "Confirm new password", "", "password", 'full minlength="6" maxlength="12" autocomplete="new-password"')}${field("hint", "New hint", "", "text", 'full minlength="4" maxlength="120" placeholder="A reminder only you understand"')}</div><p class="field-hint">This replaces your old code. Save the new code shown after recovery.</p><div class="form-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button" data-action="forgot-login">Back</button><button class="button primary" type="submit">Reset password</button></div></form>`,
     true,
   );
 }
@@ -791,6 +819,18 @@ document.addEventListener("click", async (event) => {
       forgotLoginDialog();
       return;
     }
+    if (action === "open-recovery") {
+      recoveryDialog();
+      return;
+    }
+    if (action === "recovery-done") {
+      if (recoveryDestination === "login") loginDialog(actor.username || "");
+      else {
+        closeModal();
+        render();
+      }
+      return;
+    }
     if (action === "back-to-login") {
       loginDialog();
       return;
@@ -823,6 +863,7 @@ document.addEventListener("click", async (event) => {
     }
     if (action === "retry-connection") connect();
     else if (action === "change-password") passwordDialog();
+    else if (action === "recovery-options") recoveryOptionsDialog();
     else if (action === "reset-password") passwordDialog(true);
     else if (action === "logout") {
       await apiCall("logout", {});
@@ -895,6 +936,7 @@ document.addEventListener("submit", async (event) => {
           username: data.username,
           password: data.password,
           confirmPassword: data.confirmPassword,
+          hint: data.hint,
         });
       } catch (error) {
         if (error.code !== "SETUP_TOKEN_INVALID") throw error;
@@ -908,10 +950,28 @@ document.addEventListener("submit", async (event) => {
       state = await apiCall("state");
       closeModal();
       render();
-      toast(
-        `Your account is ready. You’re logged in as ${actor.username}.`,
-        "success",
-      );
+      showRecoveryCode(response.recoveryCode, actor.username);
+      return;
+    }
+    if (form.dataset.form === "hint-lookup") {
+      const response = await apiCall("recovery/hint", { username: data.username });
+      const result = form.querySelector("#hint-result");
+      result.textContent = response.hint || "No hint was saved for that account.";
+      result.hidden = false;
+      return;
+    }
+    if (form.dataset.form === "recover") {
+      if (data.newPassword !== data.confirmPassword)
+        throw Error("The passwords do not match.");
+      const response = await apiCall("recovery/reset", data);
+      clearSession();
+      actor = { role: "teacher", id: "", username: response.username };
+      showRecoveryCode(response.recoveryCode, response.username, "login");
+      return;
+    }
+    if (form.dataset.form === "recovery-options") {
+      const response = await apiCall("recovery/update", data);
+      showRecoveryCode(response.recoveryCode, actor.username || actor.id);
       return;
     }
     if (form.dataset.form === "username") {
@@ -938,11 +998,12 @@ document.addEventListener("submit", async (event) => {
       if (data.newPassword !== data.confirmPassword)
         throw Error("The new passwords do not match.");
       const reset = form.dataset.form === "reset-password";
-      await apiCall(reset ? "password/reset" : "password/change", data);
+      const response = await apiCall(reset ? "password/reset" : "password/change", data);
       if (!reset) {
+        const username = actor.username || actor.id;
         clearSession();
-        loginDialog();
-        toast("Password changed. Log in with your new password.");
+        actor = { role: "teacher", id: "", username };
+        showRecoveryCode(response.recoveryCode, username, "login");
         return;
       }
       closeModal();
