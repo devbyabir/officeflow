@@ -1,9 +1,6 @@
 ; OfficeFlow Windows x64 installer (Inno Setup 6). Per-user install, no administrator rights.
 ; Build after packaging/windows/build-zip.ps1 has staged the app folder:
 ;   iscc /DAppVersion=1.0.0 /DSourceDir=<staged folder> /DOutputDir=<output> OfficeFlow.iss
-; Signing (prepared, off until a certificate exists): add /DSignTool=officeflow and
-;   /Sofficeflow="<signing command> $f" to sign the setup and its uninstaller.
-;
 ; The workspace stays in %LOCALAPPDATA%\OfficeFlow, outside {app}: installing, upgrading and
 ; uninstalling never touch it.
 
@@ -48,11 +45,6 @@ UninstallDisplayName=OfficeFlow
 ; "OfficeFlow.Launcher" mutex while it runs.
 CloseApplications=no
 SetupLogging=yes
-#ifdef SignTool
-SignTool={#SignTool}
-SignedUninstaller=yes
-#endif
-
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; Flags: unchecked
 

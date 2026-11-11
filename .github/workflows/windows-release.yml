@@ -106,13 +106,24 @@ jobs:
       - name: Test install, Start menu setup, saving an item, quit, restart, upgrade and uninstall
         shell: pwsh
         run: ./tests/windows_installer_test.ps1 -Installer $env:SETUP -UpgradeInstaller $env:UPGRADE_SETUP
-      - name: Upload installer and checksum
+      - name: Collect Windows release artifacts
+        shell: pwsh
+        run: |
+          $version = ([xml](Get-Content -Raw server/pom.xml)).project.version
+          $release = New-Item -ItemType Directory -Force release
+          foreach ($file in @(
+            "installer/OfficeFlow-Setup-$version-x64.exe",
+            "installer/OfficeFlow-Setup-$version-x64.exe.sha256",
+            "dist/OfficeFlow-$version-windows-x64.zip",
+            "dist/OfficeFlow-$version-windows-x64.zip.sha256"
+          )) {
+            Copy-Item -LiteralPath $file -Destination $release.FullName -ErrorAction Stop
+          }
+      - name: Upload installer, portable ZIP and checksums
         uses: actions/upload-artifact@v5
         with:
           name: officeflow-windows-installer
-          path: |
-            installer/*.exe
-            installer/*.exe.sha256
+          path: release/
           if-no-files-found: error
 
   runtime-source:
