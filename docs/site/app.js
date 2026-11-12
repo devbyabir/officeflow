@@ -333,7 +333,7 @@ function empty(title, copy) {
   return `<div class="empty">${icon("inventory")}<strong>${title}</strong><p>${copy}</p></div>`;
 }
 function requestRow(r, short = false) {
-  return `<article class="request-card"><span class="activity-avatar">${initials(r.teacherName)}</span><div class="request-details"><strong>${escape(r.supplyName)} <span style="color:#94a18e;font-weight:400">× ${r.quantity}</span></strong><small>${escape(r.teacherName)} <span style="margin:0 5px">·</span> ${date(r.createdAt)}</small>${!short && r.note ? `<div class="request-note">${escape(r.note)}</div>` : ""}</div>${badge(r.status)}<div class="request-actions">${r.status === "Pending" ? (actor.role === "admin" ? `<button class="button" data-action="reject" data-id="${r.id}">Reject</button><button class="button primary" data-action="issue" data-id="${r.id}">Issue ${icon("arrow")}</button>` : `<button class="button" data-action="cancel" data-id="${r.id}">Cancel request</button>`) : ""}</div></article>${short ? "" : timeline(r)}`;
+  return `<article class="request-card"><span class="activity-avatar">${escape(initials(r.teacherName))}</span><div class="request-details"><strong>${escape(r.supplyName)} <span style="color:#94a18e;font-weight:400">× ${r.quantity}</span></strong><small>${escape(r.teacherName)} <span style="margin:0 5px">·</span> ${date(r.createdAt)}</small>${!short && r.note ? `<div class="request-note">${escape(r.note)}</div>` : ""}</div>${badge(r.status)}<div class="request-actions">${r.status === "Pending" ? (actor.role === "admin" ? `<button class="button" data-action="reject" data-id="${r.id}">Reject</button><button class="button primary" data-action="issue" data-id="${r.id}">Issue ${icon("arrow")}</button>` : `<button class="button" data-action="cancel" data-id="${r.id}">Cancel request</button>`) : ""}</div></article>${short ? "" : timeline(r)}`;
 }
 function overview() {
   const low = state.supplies
@@ -376,7 +376,7 @@ function overview() {
         )
         .join("") ||
       '<div class="restock-item"><strong>Everything is well stocked.</strong></div>'
-    }</div><a href="#inventory" class="restock-footer">A little planning goes a long way. ${icon("arrow")}</a></section><section class="panel"><div class="panel-heading"><h2>Recent activity</h2><span style="color:#9aaa96">↗</span></div><div class="activity">${activity.map((r) => `<div class="activity-entry"><span class="activity-avatar">${initials(r.teacherName)}</span><div><p><strong>${escape(r.teacherName.split(" ")[0])}</strong> ${r.status === "Pending" ? "requested" : r.status.toLowerCase()} <strong>${r.quantity} ${escape(r.supplyName)}</strong></p><time>${date(r.updatedAt || r.createdAt)}</time></div></div>`).join("") || '<p class="subtitle">Your next action starts the story.</p>'}</div><a class="text-button activity-more" href="#history">See all activity ${icon("arrow")}</a></section></aside></div>`
+    }</div><a href="#inventory" class="restock-footer">A little planning goes a long way. ${icon("arrow")}</a></section><section class="panel"><div class="panel-heading"><h2>Recent activity</h2><span style="color:#9aaa96">↗</span></div><div class="activity">${activity.map((r) => `<div class="activity-entry"><span class="activity-avatar">${escape(initials(r.teacherName))}</span><div><p><strong>${escape(r.teacherName.split(" ")[0])}</strong> ${r.status === "Pending" ? "requested" : r.status.toLowerCase()} <strong>${r.quantity} ${escape(r.supplyName)}</strong></p><time>${date(r.updatedAt || r.createdAt)}</time></div></div>`).join("") || '<p class="subtitle">Your next action starts the story.</p>'}</div><a class="text-button activity-more" href="#history">See all activity ${icon("arrow")}</a></section></aside></div>`
   );
 }
 function inventory() {
@@ -432,7 +432,7 @@ function teachers() {
       actionButton("import-teachers", "Import CSV", "import") +
         actionButton("new-teacher", "Add teacher", "plus", true),
     ) +
-    `<section class="panel"><div class="panel-heading"><div><h2>Teacher directory</h2><p>${state.teachers.length} people in this workspace.</p></div></div>${toolbar("teachers")}<div class="teacher-grid">${rows.map((t) => `<article class="teacher-card"><span class="avatar">${initials(t.name)}</span><h3>${escape(t.name)}</h3><p>${escape(t.department)}</p><p>${escape(t.email || "No email added")}</p><div class="card-actions"><small>${escape(t.id)}</small><button class="text-button" data-action="edit-teacher" data-id="${escape(t.id)}">Edit profile ↗</button></div></article>`).join("")}</div>${!rows.length ? empty("No teachers found", "Try a different search or add a teacher.") : ""}</section>`
+    `<section class="panel"><div class="panel-heading"><div><h2>Teacher directory</h2><p>${state.teachers.length} people in this workspace.</p></div></div>${toolbar("teachers")}<div class="teacher-grid">${rows.map((t) => `<article class="teacher-card"><span class="avatar">${escape(initials(t.name))}</span><h3>${escape(t.name)}</h3><p>${escape(t.department)}</p><p>${escape(t.email || "No email added")}</p><div class="card-actions"><small>${escape(t.id)}</small><button class="text-button" data-action="edit-teacher" data-id="${escape(t.id)}">Edit profile ↗</button></div></article>`).join("")}</div>${!rows.length ? empty("No teachers found", "Try a different search or add a teacher.") : ""}</section>`
   );
 }
 // After an older account logs in with its ID: a gentle offer to choose a username. "Later"
@@ -561,7 +561,7 @@ function identities() {
   modal(
     "Take a different seat",
     "Explore both sides of the workflow. All profiles below are fictional.",
-    `<div class="identity-grid"><button class="identity-option" data-action="identity" data-id="admin"><span class="avatar">AD</span><span><strong>Workspace administrator</strong><small>Manage inventory, teachers and approvals</small></span></button>${state.teachers.map((t) => `<button class="identity-option" data-action="identity" data-id="${escape(t.id)}"><span class="avatar">${initials(t.name)}</span><span><strong>${escape(t.name)}</strong><small>${escape(t.department)} · teacher</small></span></button>`).join("")}</div>`,
+    `<div class="identity-grid"><button class="identity-option" data-action="identity" data-id="admin"><span class="avatar">AD</span><span><strong>Workspace administrator</strong><small>Manage inventory, teachers and approvals</small></span></button>${state.teachers.map((t) => `<button class="identity-option" data-action="identity" data-id="${escape(t.id)}"><span class="avatar">${escape(initials(t.name))}</span><span><strong>${escape(t.name)}</strong><small>${escape(t.department)} · teacher</small></span></button>`).join("")}</div>`,
   );
 }
 function importDialog(type) {
