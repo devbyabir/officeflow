@@ -17,15 +17,17 @@ the OfficeFlow material.
 ## 2. What these terms cover
 
 These terms grant permission for the official OfficeFlow Windows installer
-(OfficeFlow-Setup-<version>-x64.exe) published on the OfficeFlow release page,
-https://github.com/devbyabir/officeflow/releases, and for the program it
-installs (together, the "package"). They do not cover the OfficeFlow source
-code repository, which is governed by its own LICENSE file.
+(OfficeFlow-Setup-<version>-x64.exe), the portable Windows ZIP
+(OfficeFlow-<version>-windows-x64.zip), and the program files they contain
+(together, the "package"). These files are published on the OfficeFlow release
+page, https://github.com/devbyabir/officeflow/releases. These terms do not
+cover the OfficeFlow source code repository, which is governed by its own
+LICENSE file.
 
 ## 3. What you may do
 
 You may download the official package from the OfficeFlow release page, and
-install and run it:
+install or extract and run it:
 
 - for your own personal use; or
 - for the internal use of an office, school, business or other organisation,
