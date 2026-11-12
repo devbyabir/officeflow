@@ -36,9 +36,38 @@ public final class Service {
   }
 
   /** Creates administrator 001 once; refused when an administrator already exists. */
-  public synchronized void createFirstAdministrator(String username, String password)
+  public synchronized String createFirstAdministrator(String username, String password, String hint)
       throws SQLException {
-    store.createFirstAdministrator(username, password);
+    String code = Accounts.recoveryCode("001");
+    store.createFirstAdministrator(username, password, hint, code);
+    return code;
+  }
+
+  /** A reminder is only shown for an exact username or account ID, never as proof of ownership. */
+  public synchronized String recoveryHint(String name) throws SQLException {
+    if (name == null || name.length() > 40) return "";
+    String id = store.accountFor(name);
+    String hint = id == null ? null : store.hint(id);
+    return hint == null ? "" : hint;
+  }
+
+  /** A one-time code can recover an account even when its username has been forgotten. */
+  public synchronized String[] recover(String code, String next, String hint) throws SQLException {
+    if (code == null || code.length() > 80 || !code.matches("[A-Za-z0-9_-]{1,30}\\.[A-Za-z0-9_-]{32}"))
+      throw new SecurityException("Recovery code is incorrect.");
+    String id = code.substring(0, code.indexOf('.'));
+    String[] credential = store.credential(id);
+    String stored = store.recoveryHash(id);
+    if (credential == null || stored == null || !Accounts.matches(code.toCharArray(), stored))
+      throw new SecurityException("Recovery code is incorrect.");
+    Accounts.Account account =
+        credential[0].equals("admin") ? new Accounts.Administrator(id) : new Accounts.Teacher(id);
+    requireAccount(store.read(), account);
+    Accounts.validatePassword(next);
+    String reminder = Accounts.validateHint(hint, store.username(id), next);
+    String replacement = Accounts.recoveryCode(id);
+    store.updatePassword(id, next, false, reminder, replacement);
+    return new String[] {store.username(id) == null ? id : store.username(id), replacement, id};
   }
 
   /** The account's username, or null for an older account that has not chosen one. */
@@ -170,13 +199,28 @@ public final class Service {
     return withTemporaryPasswords(visibleState(state, account), passwords);
   }
 
-  public synchronized void changePassword(Accounts.Account account, String current, String next)
+  public synchronized String changePassword(
+      Accounts.Account account, String current, String next, String hint)
       throws SQLException {
     requireAccount(store.read(), account);
     login(account.id(), current);
     Accounts.validatePassword(next);
     if (current.equals(next)) throw new IllegalArgumentException("Choose a different password.");
-    store.updatePassword(account.id(), next, false);
+    String reminder = Accounts.validateHint(hint, store.username(account.id()), next);
+    String code = Accounts.recoveryCode(account.id());
+    store.updatePassword(account.id(), next, false, reminder, code);
+    return code;
+  }
+
+  /** Refreshes the hint and recovery code after verifying the account's current password. */
+  public synchronized String updateRecovery(Accounts.Account account, String current, String hint)
+      throws SQLException {
+    requireAccount(store.read(), account);
+    login(account.id(), current);
+    String reminder = Accounts.validateHint(hint, store.username(account.id()), current);
+    String code = Accounts.recoveryCode(account.id());
+    store.setRecovery(account.id(), reminder, code);
+    return code;
   }
 
   /** An administrator's reset is a temporary password; the teacher must change it at sign-in. */
@@ -186,7 +230,7 @@ public final class Service {
     if (find(store.read().getAsJsonArray("teachers"), id) == null)
       throw new IllegalArgumentException("Choose an active teacher account.");
     Accounts.validatePassword(next);
-    store.updatePassword(id, next, true);
+    store.updatePassword(id, next, true, null, null);
   }
 
   private static void requireAccount(JsonObject state, Accounts.Account account) {

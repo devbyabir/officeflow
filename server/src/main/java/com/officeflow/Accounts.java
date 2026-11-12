@@ -2,7 +2,9 @@ package com.officeflow;
 
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.text.Normalizer;
 import java.util.Base64;
+import java.util.Locale;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 
@@ -50,20 +52,50 @@ public final class Accounts {
     }
   }
 
-  public static final int MINIMUM_PASSWORD = 15;
-  public static final int MAXIMUM_PASSWORD = 120;
+  public static final int MINIMUM_PASSWORD = 6;
+  public static final int MAXIMUM_PASSWORD = 12;
 
   /**
-   * The policy for every new password: chosen, reset and initial administrator passwords. A
-   * passphrase of 15–120 characters, with no rules about digits or symbols. Passwords set under
-   * the earlier 12-character rule keep working, because sign-in only compares the stored hash.
+   * The policy for newly chosen passwords. Sign-in still accepts existing longer passwords and
+   * the generated temporary passwords; it compares their hashes without a length check.
    */
   public static void validatePassword(String password) {
     if (password.length() < MINIMUM_PASSWORD
         || password.length() > MAXIMUM_PASSWORD
         || password.isBlank())
       throw new IllegalArgumentException(
-          "Use a passphrase of 15–120 characters. Spaces and any characters are fine.");
+          "Use a password of 6–12 characters. Spaces and symbols are allowed.");
+  }
+
+  /** A reminder must not disclose the entire username or password, even with added separators. */
+  public static String validateHint(String hint, String username, String password) {
+    String value = hint == null ? "" : hint.trim();
+    if (value.length() < 4 || value.length() > 120)
+      throw new IllegalArgumentException("Use a hint of 4–120 characters.");
+    String compact = compact(value);
+    for (String secret : new String[] {username, password}) {
+      if (secret == null || secret.isEmpty()) continue;
+      String raw = Normalizer.normalize(secret, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
+      String normalized = compact(secret);
+      if (value.toLowerCase(Locale.ROOT).contains(raw)
+          || (!normalized.isEmpty() && compact.contains(normalized)))
+        throw new IllegalArgumentException(
+            "A hint cannot contain your complete username or password.");
+    }
+    return value;
+  }
+
+  private static String compact(String text) {
+    return Normalizer.normalize(text, Normalizer.Form.NFKC)
+        .toLowerCase(Locale.ROOT)
+        .replaceAll("[^\\p{L}\\p{N}]", "");
+  }
+
+  /** The account ID prefixes a random secret so recovery works when the username is forgotten. */
+  public static String recoveryCode(String id) {
+    byte[] random = new byte[24];
+    new SecureRandom().nextBytes(random);
+    return id + "." + Base64.getUrlEncoder().withoutPadding().encodeToString(random);
   }
 
   /**

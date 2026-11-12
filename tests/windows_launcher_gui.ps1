@@ -16,7 +16,7 @@ $ErrorActionPreference = "Stop"
 $temp = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
 $work = Join-Path $temp "OfficeFlow launcher test"
 $base = "http://127.0.0.1:8080"
-$password = "Windowless setup password 4"
+$password = "windowless"
 $launched = @()
 
 function Notice([string]$Message) { Write-Output "::notice title=Windowless launcher test::$Message" }
@@ -153,7 +153,7 @@ try {
   }
   Assert ((Invoke-Api "/api/setup").status -eq "ready") "setup waits for the administrator password"
   Invoke-Api "/api/login" @{ id = "001"; password = $password } -Expected 403 | Out-Null
-  Invoke-Api "/api/setup" @{ token = $token; username = "windowless.admin"; password = $password; confirmPassword = $password } | Out-Null
+  Invoke-Api "/api/setup" @{ token = $token; username = "windowless.admin"; password = $password; confirmPassword = $password; hint = "office clue" } | Out-Null
   Invoke-Api "/api/setup" @{ token = $token; username = "someone.else"; password = "Another password 12" } -Expected 409 | Out-Null
   Invoke-Api "/api/command" @{ action = "saveSupply"; data = @{
       name = "Windowless check folders"; category = "Stationery"; quantity = "6"; threshold = "2"; unit = "packs" } } (Login) | Out-Null

@@ -8,7 +8,7 @@ $ErrorActionPreference = "Stop"
 $temp = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
 $work = Join-Path $temp "OfficeFlow ZIP test"
 $base = "http://127.0.0.1:8080"
-$password = "Release ZIP password 4"
+$password = "release-zip"
 $helper = Join-Path $PSScriptRoot "windows_console_helper.ps1"
 $launched = @()
 

@@ -60,7 +60,7 @@ function Invoke-Api([string]$Base, [string]$Path, $Body = $null, [string]$Token 
 function Assert([bool]$Condition, [string]$Message) { if (-not $Condition) { throw "Check failed: $Message" } }
 
 function Assert-Workspace([string]$Base, [string]$Password, [bool]$ExpectLaterSupply) {
-  $admin = (Invoke-Api $Base "/api/login" @{ id = "001"; password = "smoke-admin-password" }).token
+  $admin = (Invoke-Api $Base "/api/login" @{ id = "001"; password = "smoke-admin" }).token
   $state = Invoke-Api $Base "/api/state" -Token $admin
   $paper = $state.supplies | Where-Object name -eq "Smoke paper"
   Assert ($paper.quantity -eq 3) "stock is 3 after issuing 2 of 5"
@@ -73,7 +73,7 @@ function Assert-Workspace([string]$Base, [string]$Password, [bool]$ExpectLaterSu
 
 try {
   # README step 2, with the password set directly because Read-Host needs a keyboard.
-  $env:OFFICEFLOW_ADMIN_PASSWORD = "smoke-admin-password"
+  $env:OFFICEFLOW_ADMIN_PASSWORD = "smoke-admin"
   $server = Start-OfficeFlow "java -jar server\target\officeflow-1.0.0.jar"
   Assert ($server.Output.Contains("Database: $database")) "prints the default database path $database"
   Assert (Test-Path $database) "creates $database"
@@ -82,7 +82,7 @@ try {
   Assert ($page.Content.Contains('<meta name="officeflow-mode" content="java" />')) "serves the Java-mode page"
 
   $base = $server.Base
-  $admin = (Invoke-Api $base "/api/login" @{ id = "001"; password = "smoke-admin-password" }).token
+  $admin = (Invoke-Api $base "/api/login" @{ id = "001"; password = "smoke-admin" }).token
   $created = Invoke-Api $base "/api/command" @{ action = "saveTeacher"; data = @{
       id = "T001"; name = "Smoke Teacher"; department = "Office"; email = "" } } $admin
   $temporary = $created.temporaryPasswords[0].password
@@ -91,8 +91,8 @@ try {
   Assert $login.actor.mustChangePassword "a temporary password must be changed"
   $blocked = Invoke-Api $base "/api/state" -Token $login.token -Expected 403
   Assert ($blocked.code -eq "PASSWORD_CHANGE_REQUIRED") "temporary sessions cannot read the workspace"
-  Invoke-Api $base "/api/password/change" @{ currentPassword = $temporary; newPassword = "smoke-teacher-password" } $login.token | Out-Null
-  $teacher = (Invoke-Api $base "/api/login" @{ id = "T001"; password = "smoke-teacher-password" }).token
+  Invoke-Api $base "/api/password/change" @{ currentPassword = $temporary; newPassword = "smoke-teach"; hint = "school clue" } $login.token | Out-Null
+  $teacher = (Invoke-Api $base "/api/login" @{ id = "T001"; password = "smoke-teach" }).token
   $state = Invoke-Api $base "/api/command" @{ action = "saveSupply"; data = @{
       name = "Smoke paper"; category = "Paper & print"; quantity = "5"; threshold = "1"; unit = "reams" } } $admin
   $supply = ($state.supplies | Where-Object name -eq "Smoke paper").id
@@ -104,7 +104,7 @@ try {
   # README step 3: later starts need no password.
   Remove-Item Env:OFFICEFLOW_ADMIN_PASSWORD
   $server = Start-OfficeFlow "java -jar server\target\officeflow-1.0.0.jar"
-  Assert-Workspace $server.Base "smoke-teacher-password" $false
+  Assert-Workspace $server.Base "smoke-teach" $false
   Notice "Reopened $database without OFFICEFLOW_ADMIN_PASSWORD; stock, history and passwords intact"
   Stop-OfficeFlow $server
 
@@ -120,16 +120,16 @@ try {
   Copy-Item $backup "$check\officeflow.mv.db"
   $server = Start-OfficeFlow "java `"-Dofficeflow.db=jdbc:h2:$check\officeflow`" `"-Dofficeflow.port=8081`" -jar server\target\officeflow-1.0.0.jar" 8081
   Assert ($server.Output.Contains("Database: $check\officeflow.mv.db")) "the backup check opens the copy"
-  Assert-Workspace $server.Base "smoke-teacher-password" $false
+  Assert-Workspace $server.Base "smoke-teach" $false
   Notice "Backup copy opened on port 8081 from $check; stock, history and passwords intact"
   Stop-OfficeFlow $server
 
   # Change the live workspace after the backup, then restore as the README describes.
   $server = Start-OfficeFlow "java -jar server\target\officeflow-1.0.0.jar"
-  $admin = (Invoke-Api $server.Base "/api/login" @{ id = "001"; password = "smoke-admin-password" }).token
+  $admin = (Invoke-Api $server.Base "/api/login" @{ id = "001"; password = "smoke-admin" }).token
   Invoke-Api $server.Base "/api/command" @{ action = "saveSupply"; data = @{
       name = "Added after backup"; category = "Stationery"; quantity = "1"; threshold = "0"; unit = "box" } } $admin | Out-Null
-  Assert-Workspace $server.Base "smoke-teacher-password" $true
+  Assert-Workspace $server.Base "smoke-teach" $true
   Stop-OfficeFlow $server
 
   $data = "$env:LOCALAPPDATA\OfficeFlow"
@@ -137,7 +137,7 @@ try {
   Copy-Item $backup "$data\officeflow.mv.db"
   Assert (@(Get-ChildItem $data -Filter "officeflow-before-restore-*.mv.db").Count -eq 1) "the pre-restore file is kept"
   $server = Start-OfficeFlow "java -jar server\target\officeflow-1.0.0.jar"
-  Assert-Workspace $server.Base "smoke-teacher-password" $false
+  Assert-Workspace $server.Base "smoke-teach" $false
   Notice "Restored the backup into $database; later changes are gone and the previous file was kept"
   Stop-OfficeFlow $server
   Write-Output "Windows smoke check passed."

@@ -19,7 +19,7 @@ JAVA = os.environ.get("JAVA", "java")
 CLASSPATH = os.environ.get("OFFICEFLOW_CP", os.pathsep.join([
     str(ROOT / "server/target/classes"), str(ROOT / "server/target/dependency/*")]))
 JAR = ROOT / "server/target/officeflow-1.0.0.jar"
-ADMIN_PASSWORD = "test-admin-password"
+ADMIN_PASSWORD = "test-admin"
 SAMPLE_URL = "https://devbyabir.github.io/officeflow/"
 READY_LINE = "Press Ctrl+C to stop."  # Printed after the URL, Database and Web files lines.
 
@@ -65,7 +65,15 @@ class Server:
 
     def stop(self):
         if self.process.poll() is None:
-            self.process.terminate()
+            if self.base:
+                try:
+                    urllib.request.urlopen(urllib.request.Request(self.base + "/api/quit",
+                        data=b"{}", headers={"Content-Type": "application/json"}), timeout=3).close()
+                    self.process.wait(timeout=10)
+                except (OSError, subprocess.TimeoutExpired):
+                    self.process.terminate()
+            else:
+                self.process.terminate()
         self.process.wait(timeout=20)
         self.stream.close()
 
@@ -129,10 +137,10 @@ def workflow(temp):
     # A new workspace is not created without a valid administrator password.
     refused(temp, [database(db)], clean_env(), "OFFICEFLOW_ADMIN_PASSWORD", "Nothing was created")
     refused(temp, [database(db)], clean_env(OFFICEFLOW_ADMIN_PASSWORD="001"),
-            "15-120 characters")
-    # 14 characters met the old 12-character rule; new passwords need 15.
+            "6-12 characters")
+    # New passwords are limited to 12 characters.
     refused(temp, [database(db)], clean_env(OFFICEFLOW_ADMIN_PASSWORD="fourteen chars"),
-            "15-120 characters")
+            "6-12 characters")
     assert not db.parent.exists() or not any(db.parent.iterdir())
 
     server = start(temp, [database(db)], clean_env(OFFICEFLOW_ADMIN_PASSWORD=ADMIN_PASSWORD))
@@ -170,13 +178,13 @@ def workflow(temp):
         assert call("/api/import", {"type": "teachers", "csv": ""}, limited,
                     403)["code"] == "PASSWORD_CHANGE_REQUIRED"
         assert call("/api/session", token=limited)["actor"]["mustChangePassword"] is True
-        call("/api/password/change", {"currentPassword": temporary, "newPassword": "short"},
+        call("/api/password/change", {"currentPassword": temporary, "newPassword": "short", "hint": "school clue"},
              limited, 400)
         call("/api/password/change", {"currentPassword": temporary,
-                                      "newPassword": "teacher-own-password"}, limited)
+                                      "newPassword": "teacher-own", "hint": "first classroom"}, limited)
         call("/api/session", token=limited, expected=403)
         call("/api/login", {"id": "T100", "password": temporary}, expected=403)
-        login = call("/api/login", {"id": "T100", "password": "teacher-own-password"})
+        login = call("/api/login", {"id": "T100", "password": "teacher-own"})
         assert login["actor"]["mustChangePassword"] is False
         teacher = login["token"]
 
@@ -206,37 +214,37 @@ def workflow(temp):
         call("/api/import", {"type": "teachers", "csv":
              "id,name,department,email\nT200,New,CS,\nT100,Duplicate,CS,"}, admin, 400)
         assert len(call("/api/state", token=admin)["teachers"]) == 1
-        second = call("/api/login", {"id": "T100", "password": "teacher-own-password"})["token"]
+        second = call("/api/login", {"id": "T100", "password": "teacher-own"})["token"]
         call("/api/password/change", {"currentPassword": "wrong",
-                                      "newPassword": "teacher-new-password"}, teacher, 403)
-        call("/api/password/reset", {"id": "T100", "newPassword": "teacher-reset-password"},
+                                      "newPassword": "teacher-new", "hint": "second room"}, teacher, 403)
+        call("/api/password/reset", {"id": "T100", "newPassword": "teach-reset"},
              teacher, 403)
-        call("/api/password/change", {"currentPassword": "teacher-own-password",
-                                      "newPassword": "teacher-new-password"}, teacher)
+        call("/api/password/change", {"currentPassword": "teacher-own",
+                                      "newPassword": "teacher-new", "hint": "second room"}, teacher)
         call("/api/state", token=teacher, expected=403)
         assert call("/api/state", token=second, expected=403)["code"] == "SESSION_EXPIRED"
-        teacher = call("/api/login", {"id": "T100", "password": "teacher-new-password"})["token"]
+        teacher = call("/api/login", {"id": "T100", "password": "teacher-new"})["token"]
         # An ordinary inventory write must preserve the changed credential.
         command("saveSupply", {"name": "QA Clips", "category": "Stationery", "quantity": "2",
                                "threshold": "1", "unit": "boxes"})
-        call("/api/login", {"id": "T100", "password": "teacher-new-password"})
+        call("/api/login", {"id": "T100", "password": "teacher-new"})
         call("/api/password/reset", {"id": "001", "newPassword": "forbidden-admin-reset"},
              admin, 400)
         # An administrator's reset is temporary: the teacher must choose a new password.
-        call("/api/password/reset", {"id": "T100", "newPassword": "teacher-reset-password"},
+        call("/api/password/reset", {"id": "T100", "newPassword": "teach-reset"},
              admin)
         call("/api/state", token=teacher, expected=403)
-        reset = call("/api/login", {"id": "T100", "password": "teacher-reset-password"})
+        reset = call("/api/login", {"id": "T100", "password": "teach-reset"})
         assert reset["actor"]["mustChangePassword"] is True
         assert call("/api/state", token=reset["token"],
                     expected=403)["code"] == "PASSWORD_CHANGE_REQUIRED"
         call("/api/logout", {}, reset["token"])
         call("/api/state", token=reset["token"], expected=403)
         call("/api/logout", {}, reset["token"], 403)
-        teacher = call("/api/login", {"id": "T100", "password": "teacher-reset-password"})["token"]
-        call("/api/password/change", {"currentPassword": "teacher-reset-password",
-                                      "newPassword": "teacher-final-password"}, teacher)
-        teacher = call("/api/login", {"id": "T100", "password": "teacher-final-password"})["token"]
+        teacher = call("/api/login", {"id": "T100", "password": "teach-reset"})["token"]
+        call("/api/password/change", {"currentPassword": "teach-reset",
+                                      "newPassword": "teach-final", "hint": "final room"}, teacher)
+        teacher = call("/api/login", {"id": "T100", "password": "teach-final"})["token"]
         created = command("saveTeacher", {"id": "T300", "name": "Temporary", "department": "Art",
                                           "email": ""})
         command("deleteTeacher", {"id": "T300"})
@@ -244,10 +252,10 @@ def workflow(temp):
              expected=403)
         admin2 = call("/api/login", {"id": "001", "password": ADMIN_PASSWORD})["token"]
         call("/api/password/change", {"currentPassword": ADMIN_PASSWORD,
-                                      "newPassword": "updated-admin-password"}, admin)
+                                      "newPassword": "admin-new", "hint": "admin clue"}, admin)
         call("/api/state", token=admin, expected=403)
         call("/api/state", token=admin2, expected=403)
-        admin = call("/api/login", {"id": "001", "password": "updated-admin-password"})["token"]
+        admin = call("/api/login", {"id": "001", "password": "admin-new"})["token"]
         before = call("/api/state", token=admin)
     finally:
         server.stop()
@@ -256,9 +264,9 @@ def workflow(temp):
     server = start(temp, [database(db)], clean_env())
     try:
         call = client(server.base)
-        admin = call("/api/login", {"id": "001", "password": "updated-admin-password"})["token"]
+        admin = call("/api/login", {"id": "001", "password": "admin-new"})["token"]
         assert call("/api/state", token=admin) == before
-        call("/api/login", {"id": "T100", "password": "teacher-final-password"})
+        call("/api/login", {"id": "T100", "password": "teach-final"})
     finally:
         server.stop()
     print("Workflow passed: new-workspace admin password, temporary teacher passwords,"
@@ -281,8 +289,8 @@ def seed_flag_and_backup(temp):
             "id": "T001", "name": "Real Teacher", "department": "Office", "email": ""}), "T001")
         limited = call("/api/login", {"id": "T001", "password": temporary})["token"]
         call("/api/password/change", {"currentPassword": temporary,
-                                      "newPassword": "real-teacher-password"}, limited)
-        teacher = call("/api/login", {"id": "T001", "password": "real-teacher-password"})["token"]
+                                      "newPassword": "real-teacher", "hint": "school clue"}, limited)
+        teacher = call("/api/login", {"id": "T001", "password": "real-teacher"})["token"]
         state = command("saveSupply", {"name": "Ink", "category": "Paper & print",
                                        "quantity": "3", "threshold": "1", "unit": "cartridges"})
         supply = state["supplies"][0]["id"]
@@ -307,7 +315,7 @@ def seed_flag_and_backup(temp):
         call = client(server.base)
         admin = call("/api/login", {"id": "001", "password": ADMIN_PASSWORD})["token"]
         assert call("/api/state", token=admin) == before
-        call("/api/login", {"id": "T001", "password": "real-teacher-password"})
+        call("/api/login", {"id": "T001", "password": "real-teacher"})
         state = call("/api/command", {"action": "saveSupply", "data": {
             "name": "Toner", "category": "Paper & print", "quantity": "6", "threshold": "2",
             "unit": "boxes"}}, admin)
@@ -327,7 +335,7 @@ def seed_flag_and_backup(temp):
         assert state == before
         assert [s["quantity"] for s in state["supplies"]] == [6]
         assert state["requests"][0]["status"] == "Issued"
-        teacher = call("/api/login", {"id": "T001", "password": "real-teacher-password"})
+        teacher = call("/api/login", {"id": "T001", "password": "real-teacher"})
         assert teacher["actor"]["mustChangePassword"] is False
     finally:
         server.stop()
@@ -419,7 +427,7 @@ def browser_setup(temp):
         except urllib.error.HTTPError as error:
             assert error.code == 403, error.code
         # A bad username or a weak or mismatched password is rejected without using the token.
-        account = {"token": token, "username": "Office.Admin"}
+        account = {"token": token, "username": "Office.Admin", "hint": "office clue"}
         call("/api/setup", {**account, "password": "short"}, expected=400)
         call("/api/setup", {**account, "password": "fourteen chars"}, expected=400)
         call("/api/setup", {**account, "username": "1st", "password": ADMIN_PASSWORD}, expected=400)
@@ -457,16 +465,16 @@ def browser_setup(temp):
                                       "password": temporary_password(created, "T010")})["token"]
         call("/api/username", {"username": "robin"}, teacher, expected=403)  # must change first
         call("/api/password/change", {"currentPassword": temporary_password(created, "T010"),
-                                      "newPassword": "robin chooses this"}, teacher)
-        teacher = call("/api/login", {"id": "T010", "password": "robin chooses this"})["token"]
+                                      "newPassword": "robin-choose", "hint": "robin clue"}, teacher)
+        teacher = call("/api/login", {"id": "T010", "password": "robin-choose"})["token"]
         for taken in ("Office.Admin", "001", "x", "9lives"):
             call("/api/username", {"username": taken}, teacher, expected=400)
         # Another account's ID cannot become a username (an account may reuse its own ID).
         call("/api/username", {"username": "t010"}, admin, expected=400)
         saved = call("/api/username", {"username": "Robin_Lee"}, teacher)
         assert saved["actor"]["username"] == "robin_lee", saved
-        call("/api/login", {"username": "robin_lee", "password": "robin chooses this"})
-        call("/api/login", {"id": "T010", "password": "robin chooses this"})
+        call("/api/login", {"username": "robin_lee", "password": "robin-choose"})
+        call("/api/login", {"id": "T010", "password": "robin-choose"})
         # A new teacher ID may not equal an existing username (ignoring case).
         clash = call("/api/command", {"action": "saveTeacher", "data": {
             "id": "ROBIN_LEE", "name": "Dup", "department": "Art", "email": ""}}, admin,
@@ -503,9 +511,22 @@ def browser_setup(temp):
         lines = [line for line in server.output().splitlines() if "/#setup=" in line]
         assert lines and "within 15 minutes" in lines[0], server.output()
         printed = lines[0].split("/#setup=", 1)[1].split()[0]
-        client(server.base)("/api/setup", {"token": printed, "username": "manual",
-                                           "password": ADMIN_PASSWORD})
-        client(server.base)("/api/login", {"username": "manual", "password": ADMIN_PASSWORD})
+        manual = client(server.base)
+        ready = manual("/api/setup", {"token": printed, "username": "manual",
+                       "hint": "first setup clue", "password": ADMIN_PASSWORD})
+        code = ready["recoveryCode"]
+        assert code.startswith("001.") and len(code) == 36
+        assert manual("/api/recovery/hint", {"username": "manual"})["hint"] == "first setup clue"
+        assert manual("/api/recovery/hint", {"username": "unknown"})["hint"] == ""
+        assert manual("/api/recovery/reset", {"recoveryCode": code,
+                      "newPassword": "new-pass", "hint": "new-pass"}, expected=400)["error"]
+        changed = manual("/api/recovery/reset", {"recoveryCode": code,
+                         "newPassword": "new-pass", "hint": "fresh clue"})
+        assert changed["username"] == "manual" and changed["recoveryCode"] != code
+        manual("/api/recovery/reset", {"recoveryCode": code,
+               "newPassword": "another", "hint": "fresh clue"}, expected=403)
+        manual("/api/login", {"username": "manual", "password": ADMIN_PASSWORD}, expected=403)
+        manual("/api/login", {"username": "manual", "password": "new-pass"})
     finally:
         server.stop()
     print("Browser setup passed: one-time token, Host check, username and passphrase rules"
@@ -548,7 +569,7 @@ def legacy_upgrade(temp):
             first = call("/api/login", {"id": "T100", "password":
                                         temporary_password(created, "T100")})["token"]
             call("/api/password/change", {"currentPassword": temporary_password(created, "T100"),
-                                          "newPassword": old_teacher}, first)
+                                          "newPassword": old_teacher, "hint": "legacy clue"}, first)
             call("/api/command", {"action": "saveSupply", "data": {
                 "name": "Legacy staplers", "category": "Desk essentials", "quantity": "7",
                 "threshold": "2", "unit": "pieces"}}, admin)
@@ -586,9 +607,9 @@ def legacy_upgrade(temp):
         call("/api/login", {"id": "001", "password": old_admin})
         call("/api/username", {"username": "legacy.teacher"}, teacher)
         call("/api/login", {"username": "legacy.teacher", "password": old_teacher})
-        # The old 13-character passwords keep working; a new one must have 15.
+        # The old 13-character passwords keep working; a new one needs 6–12.
         call("/api/password/change", {"currentPassword": old_admin,
-                                      "newPassword": "short-again13"}, admin, expected=400)
+                                      "newPassword": "short", "hint": "school clue"}, admin, expected=400)
     finally:
         server.stop()
     assert original_file.read_bytes() == before, "the original workspace was not touched"

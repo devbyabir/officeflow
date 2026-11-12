@@ -386,9 +386,11 @@ html:has(meta[name="officeflow-mode"][content="java"]):not([data-java-ready])
   user-select: all;
 }
 .demo-banner #download-officeflow {
-  color: var(--muted);
+  color: var(--primary);
   font-weight: 600;
   white-space: nowrap;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 html:has(meta[name="officeflow-mode"][content="java"]) #download-officeflow {
   display: none;
@@ -902,4 +904,163 @@ body.is-stopped .shell {
 .username-prompt-actions {
   display: flex;
   gap: var(--space-2);
+}
+
+/* A consistent workspace surface in both the sample and installed application. */
+:root {
+  --card-radius: 16px;
+  --control-radius: 10px;
+}
+.topbar {
+  min-height: 70px;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--line) 70%, transparent);
+}
+main {
+  max-width: 1480px;
+}
+.page-heading h1 {
+  font-size: clamp(25px, 2.4vw, 34px);
+  letter-spacing: -0.04em;
+  line-height: 1.16;
+}
+.metric,
+.panel,
+.teacher-card,
+.welcome-card {
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--sidebar) 5%, transparent);
+}
+.metric {
+  min-height: 154px;
+  border-top: 3px solid color-mix(in srgb, var(--primary) 55%, var(--line));
+}
+.metric-value {
+  font-size: clamp(30px, 2.5vw, 38px);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+.panel-heading h2 {
+  font-size: 17px;
+  font-weight: 700;
+}
+.button.primary {
+  font-weight: 650;
+}
+.field input,
+.field select,
+.field textarea {
+  min-height: 44px;
+}
+
+/* The account screen is the first impression on a fresh Windows install. */
+body.auth-screen {
+  background:
+    radial-gradient(circle at 20% 15%, #294d76 0, transparent 36%),
+    linear-gradient(145deg, #0a1729, #102b3a 62%, #0c1c2c);
+}
+body.auth-screen::before {
+  content: "OfficeFlow\A A private workspace for your office.";
+  white-space: pre-line;
+  position: fixed;
+  left: max(6vw, calc((100vw - 1300px) / 2));
+  top: 39%;
+  max-width: 360px;
+  color: #f7fbff;
+  font-size: clamp(24px, 3vw, 40px);
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.035em;
+  pointer-events: none;
+}
+dialog.auth-dialog {
+  width: min(480px, calc(100vw - 32px));
+  margin: auto max(6vw, calc((100vw - 1300px) / 2)) auto auto;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: 22px;
+  box-shadow: 0 28px 90px #030b17a6;
+}
+.auth-dialog .dialog-heading {
+  padding: 30px 32px 18px;
+  gap: 18px;
+}
+.auth-dialog .dialog-heading h2 {
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+}
+.auth-dialog .dialog-heading p {
+  max-width: 39ch;
+  font-size: 14px;
+}
+.auth-dialog .dialog-body {
+  padding: 0 32px 32px;
+}
+.auth-dialog .dialog-logo {
+  width: 48px;
+  height: 48px;
+}
+.auth-dialog .form-grid {
+  gap: 14px;
+}
+.auth-dialog .field label {
+  font-weight: 650;
+}
+.auth-dialog .field input {
+  min-height: 48px;
+  background: var(--bg);
+}
+.auth-dialog .field-hint {
+  line-height: 1.45;
+}
+.auth-dialog .dialog-actions .button.primary {
+  min-height: 44px;
+  padding-inline: 20px;
+}
+.recovery-card {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  background: var(--bg);
+}
+.recovery-card p {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.recovery-card p:last-child {
+  margin: 12px 0 0;
+}
+#new-recovery-code {
+  display: block;
+  padding: 12px;
+  border: 1px dashed var(--primary);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  user-select: all;
+}
+.hint-result {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  background: var(--primary-soft);
+  overflow-wrap: anywhere;
+}
+.recovery-divider {
+  margin: 20px 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.recovery-open {
+  width: 100%;
+  justify-content: center;
+}
+@media (max-width: 980px) {
+  body.auth-screen::before { display: none; }
+  dialog.auth-dialog { margin: auto; }
+}
+@media (max-width: 540px) {
+  .auth-dialog .dialog-heading { padding: 24px 22px 14px; }
+  .auth-dialog .dialog-body { padding: 0 22px 24px; }
+  .auth-dialog .dialog-actions { flex-wrap: wrap; }
 }

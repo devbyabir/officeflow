@@ -12,7 +12,7 @@ import java.util.Map;
  * disposable H2 database under a temporary folder, filled with fictional records.
  */
 public final class ServiceTest {
-  private static final String ADMIN_PASSWORD = "test-admin-password";
+  private static final String ADMIN_PASSWORD = "test-admin";
 
   public static final class WriteCounter implements org.h2.api.Trigger {
     static int writes;
@@ -123,7 +123,7 @@ public final class ServiceTest {
               "saveTeacher",
               data("{\"id\":\"T1\",\"name\":\"Alex\",\"department\":\"CS\",\"email\":\"\"}"));
       String t1Temporary = temporaryPassword(created, "T1");
-      Accounts.validatePassword(t1Temporary);
+      check(t1Temporary.length() > Accounts.MAXIMUM_PASSWORD); // Temporary codes still sign in.
       created =
           service.execute(
               admin,
@@ -147,12 +147,12 @@ public final class ServiceTest {
       check(!edited.has("temporaryPasswords"));
       service.login("T2", t2Temporary);
 
-      denied(() -> service.changePassword(teacher, "wrong", "new-teacher-password"));
-      denied(() -> service.changePassword(teacher, t1Temporary, "short"));
-      denied(() -> service.resetPassword(teacher, "T2", "new-teacher-password"));
-      service.changePassword(teacher, t1Temporary, "new-teacher-password");
+      denied(() -> service.changePassword(teacher, "wrong", "new-teacher", "school clue"));
+      denied(() -> service.changePassword(teacher, t1Temporary, "short", "school clue"));
+      denied(() -> service.resetPassword(teacher, "T2", "new-teacher"));
+      service.changePassword(teacher, t1Temporary, "new-teacher", "school clue");
       check(!service.passwordChangeRequired("T1"));
-      service.login("T1", "new-teacher-password");
+      service.login("T1", "new-teacher");
 
       JsonObject state =
           service.execute(
@@ -232,9 +232,9 @@ public final class ServiceTest {
       check(Csv.parse("a,b\n\"x,y\",\"line\nnext\"").get(1).get(1).equals("line\nnext"));
 
       // An administrator's reset is temporary again.
-      service.resetPassword(admin, "T1", "admin-reset-password");
+      service.resetPassword(admin, "T1", "admin-reset");
       check(service.passwordChangeRequired("T1"));
-      service.login("T1", "admin-reset-password");
+      service.login("T1", "admin-reset");
 
       JsonObject before = store.read(), broken = before.deepCopy();
       broken.getAsJsonArray("supplies").get(0).getAsJsonObject().addProperty("quantity", -1);
@@ -257,7 +257,7 @@ public final class ServiceTest {
       // Temporary passwords stay temporary across a restart until their owners change them.
       check(service.passwordChangeRequired("T1") && service.passwordChangeRequired("T2"));
       check(service.passwordChangeRequired("T3"));
-      service.login("T1", "admin-reset-password");
+      service.login("T1", "admin-reset");
       JsonObject state = service.state(admin);
       check(status(state, issuedId).equals("Issued"));
       check(status(state, rejectedId).equals("Rejected"));
@@ -314,21 +314,29 @@ public final class ServiceTest {
       Service service = new Service(store);
       check(service.setupRequired());
       denied(() -> service.login("001", ADMIN_PASSWORD));
-      denied(() -> service.createFirstAdministrator("office", "too short"));
-      denied(() -> service.createFirstAdministrator("office", "fourteen chars")); // 14
-      denied(() -> service.createFirstAdministrator("1office", ADMIN_PASSWORD));
-      denied(() -> service.createFirstAdministrator("of", ADMIN_PASSWORD));
+      denied(() -> service.createFirstAdministrator("office", "short", "office clue"));
+      denied(() -> service.createFirstAdministrator("office", "fourteen chars", "office clue"));
+      denied(() -> service.createFirstAdministrator("1office", "12345678", "office clue"));
+      denied(() -> service.createFirstAdministrator("of", "12345678", "office clue"));
+      denied(() -> service.createFirstAdministrator("office", "12345678", "office"));
+      denied(() -> service.createFirstAdministrator("office", "12345678", "Use 12345678"));
       check(service.setupRequired());
-      // 15 characters, digits only: passphrases have no composition rules.
-      service.createFirstAdministrator("Office.Admin", "123456789012345");
+      String recovery = service.createFirstAdministrator("Office.Admin", "12345678", "office clue");
       check(!service.setupRequired());
-      denied(() -> service.createFirstAdministrator("other", "another-admin-password"));
+      denied(() -> service.createFirstAdministrator("other", "12345678", "other clue"));
       check("office.admin".equals(service.username("001")));
+      check("office clue".equals(service.recoveryHint("Office.Admin")));
+      check(recovery.startsWith("001.") && recovery.length() == 36);
       // The username (any case) and the account ID both sign in.
-      check(service.login("OFFICE.admin", "123456789012345").id().equals("001"));
-      check(service.login("001", "123456789012345").id().equals("001"));
+      check(service.login("OFFICE.admin", "12345678").id().equals("001"));
+      check(service.login("001", "12345678").id().equals("001"));
       denied(() -> service.login("office.admin", "wrong-password-123"));
-      Accounts.Account admin = service.login("001", "123456789012345");
+      Accounts.Account admin = service.login("001", "12345678");
+      denied(() -> service.recover("001.invalid", "nextpass", "new clue"));
+      String[] recovered = service.recover(recovery, "nextpass", "new clue");
+      denied(() -> service.recover(recovery, "nextpass", "new clue"));
+      check(service.login("office.admin", "nextpass").id().equals("001"));
+      check(recovered[1].startsWith("001.") && !recovered[1].equals(recovery));
       service.execute(
           admin,
           "saveTeacher",
@@ -351,8 +359,8 @@ public final class ServiceTest {
     try (Store store = new Store(url, "ignored-for-existing-workspace", true)) {
       Service service = new Service(store);
       check(!service.setupRequired());
-      service.login("001", "123456789012345");
-      service.login("office.admin", "123456789012345");
+      service.login("001", "nextpass");
+      service.login("office.admin", "nextpass");
       denied(() -> service.login("001", "ignored-for-existing-workspace"));
     }
 

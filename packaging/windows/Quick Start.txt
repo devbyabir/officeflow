@@ -7,6 +7,13 @@ signing in and out in turn. Other computers cannot connect to it.
 
 OfficeFlow includes its own Java runtime, so Java does not need to be installed.
 
+Windows 11 Smart App Control may block this unsigned installer or launcher.
+You can choose to turn Smart App Control off in Windows Security, but this
+also removes its protection against other untrusted apps. Microsoft offers
+no per-app exception; check Microsoft's Smart App Control FAQ before changing
+the setting because turning it back on may require a Windows reset on some
+versions: https://support.microsoft.com/en-gb/windows/security/threat-malware-protection/smart-app-control-frequently-asked-questions
+
 Requirements:
 - Windows 10 or 11 (64-bit) and a web browser.
 - Microsoft Visual C++ Redistributable for Visual Studio 2015-2022 (x64),
@@ -39,10 +46,10 @@ means you accept them.
    before usernames can still log in with their account ID (the first
    administrator is 001) and choose a username under Account.
 
-Passwords are passphrases of 15-120 characters; spaces are fine. Passwords
-set with an earlier version keep working. Forgot your login? The link on the
-Log in screen lists general reminders; an administrator can set a temporary
-password for a teacher.
+New passwords use 6-12 characters; earlier passwords still work. Choose a
+private hint that does not include the full username or password. Save the
+one-time recovery code away from this computer. Forgot username or password?
+Use your hint or the code; the code is replaced after a reset.
 
 Closing the browser tab does not stop OfficeFlow. Open OfficeFlow from the
 Start menu again to get back to it.
