@@ -215,10 +215,10 @@ final class Startup {
 
   private String jarHint() {
     if (repository != null) {
-      Path jar = repository.resolve("server/target/officeflow-1.0.0.jar");
+      Path jar = repository.resolve("server/target/officeflow-1.0.1.jar");
       if (Files.isRegularFile(jar)) return "\"" + jar + "\"";
     }
-    return "server\\target\\officeflow-1.0.0.jar";
+    return "server\\target\\officeflow-1.0.1.jar";
   }
 
   private static String slashes(Path path) {

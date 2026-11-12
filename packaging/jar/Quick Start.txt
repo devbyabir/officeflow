@@ -19,7 +19,7 @@ Nothing else is needed: no Maven and no build step.
 1. Start OfficeFlow (Windows)
 -----------------------------
 1. Extract the whole ZIP to a folder you keep, for example
-   Documents\OfficeFlow-1.0.0.
+   Documents\OfficeFlow-1.0.1.
 2. Open PowerShell in that folder: in File Explorer, right-click the folder
    and choose "Open in Terminal".
 3. First start only: choose an administrator password (6-12 characters).

@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 JAVA = os.environ.get("JAVA", "java")
 CLASSPATH = os.environ.get("OFFICEFLOW_CP", os.pathsep.join([
     str(ROOT / "server/target/classes"), str(ROOT / "server/target/dependency/*")]))
-JAR = ROOT / "server/target/officeflow-1.0.0.jar"
+JAR = ROOT / "server/target/officeflow-1.0.1.jar"
 ADMIN_PASSWORD = "test-admin"
 SAMPLE_URL = "https://devbyabir.github.io/officeflow/"
 READY_LINE = "Press Ctrl+C to stop."  # Printed after the URL, Database and Web files lines.
@@ -543,7 +543,7 @@ def legacy_upgrade(temp):
               " release's JAR.")
         return
     original = Path(temp) / "legacy-original" / "officeflow"
-    # 13 characters: valid under the previous 12-character rule, too short for a new password.
+    # 13 characters: valid in 1.0.0, retained on upgrade but too long for a new password.
     old_admin, old_teacher = "legacy-pass13", "legacy-teach1"
     # The previous release reads the web files of its own checkout (server/target/../../docs).
     legacy_site = Path(legacy_jar).resolve().parents[2] / "docs" / "site"
