@@ -16,6 +16,9 @@ Java 17+ | JDBC | H2 | JavaScript | GitHub Pages
 
 </div>
 
+The screenshots below show the current 1.0.1 interface using fictional demo
+data. The installed app uses the same workspace layout after sign-in.
+
 ![OfficeFlow dashboard](docs/images/dashboard.png)
 
 <details>

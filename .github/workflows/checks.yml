@@ -1,5 +1,7 @@
 name: Application checks
 on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
 jobs:
   test:
     # Pinned: Playwright's --with-deps installer does not support Ubuntu 26.04 (ubuntu-latest).
