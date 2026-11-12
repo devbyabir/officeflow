@@ -51,8 +51,12 @@ installed first. It needs Windows 10 or 11 (x64).
 Smart App Control can block the installer, launcher, or uninstaller because it
 cannot verify the publisher. GitHub hosting and SHA-256 checksums do not make
 an unsigned executable trusted. A release for Smart App Control On needs
-trusted code signing and a clean Windows 11 download/install test; do not
-disable Smart App Control to install OfficeFlow.
+trusted code signing and a clean Windows 11 download/install test. If you
+choose to turn Smart App Control off to run OfficeFlow, Windows will stop
+blocking other untrusted apps too. Microsoft does not offer a per-app exception;
+whether you can turn the feature back on without resetting Windows depends on
+your Windows version. [Review Microsoft's guidance before changing this
+setting](https://support.microsoft.com/en-gb/windows/security/threat-malware-protection/smart-app-control-frequently-asked-questions).
 
 1. Read the [OfficeFlow end-user terms](TERMS.md). Then open
    [Releases](https://github.com/devbyabir/officeflow/releases/latest) and download

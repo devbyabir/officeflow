@@ -7,6 +7,13 @@ signing in and out in turn. Other computers cannot connect to it.
 
 OfficeFlow includes its own Java runtime, so Java does not need to be installed.
 
+Windows 11 Smart App Control may block this unsigned installer or launcher.
+You can choose to turn Smart App Control off in Windows Security, but this
+also removes its protection against other untrusted apps. Microsoft offers
+no per-app exception; check Microsoft's Smart App Control FAQ before changing
+the setting because turning it back on may require a Windows reset on some
+versions: https://support.microsoft.com/en-gb/windows/security/threat-malware-protection/smart-app-control-frequently-asked-questions
+
 Requirements:
 - Windows 10 or 11 (64-bit) and a web browser.
 - Microsoft Visual C++ Redistributable for Visual Studio 2015-2022 (x64),
