@@ -41,6 +41,8 @@ const icons = {
   export: '<path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5"/>',
   import: '<path d="M12 16V4m-4 4 4-4 4 4M4 16v5h16v-5"/>',
   arrow: '<path d="M4 12h16m-5-5 5 5-5 5"/>',
+  settings:
+    '<path d="M10.3 2h3.4l.5 2.2 1.6.7 1.9-1.2 2.4 2.4-1.2 1.9.7 1.6 2.2.5v3.4l-2.2.5-.7 1.6 1.2 1.9-2.4 2.4-1.9-1.2-1.6.7-.5 2.2h-3.4l-.5-2.2-1.6-.7-1.9 1.2-2.4-2.4 1.2-1.9-.7-1.6-2.2-.5v-3.4l2.2-.5.7-1.6-1.2-1.9 2.4-2.4 1.9 1.2 1.6-.7z"/><circle cx="12" cy="12" r="3"/>',
   alert: '<path d="m12 3 10 18H2Z M12 9v5M12 17v1"/>',
   paper: '<path d="M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h6"/>',
   tech: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
@@ -1207,7 +1209,9 @@ if (JAVA_MODE) {
   $("#mode-badge").innerHTML = "<i></i> Java workspace";
   $("#demo-banner").querySelector("span").textContent =
     "Your OfficeFlow workspace · saved on this computer · server-checked access";
-  $("#switch-role").textContent = "Account";
+  $("#switch-role").classList.add("account-control");
+  $("#switch-role").innerHTML = `${icon("settings")}Account`;
+  $("#switch-role").title = "Account settings";
   $("#reset-demo").hidden = true;
   $("#quit-officeflow").hidden = false;
   $("#quit-officeflow").onclick = quitDialog;

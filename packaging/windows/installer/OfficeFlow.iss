@@ -1,11 +1,11 @@
 ; OfficeFlow Windows x64 installer (Inno Setup 6). Per-user install, no administrator rights.
 ; Build after packaging/windows/build-zip.ps1 has staged the app folder:
-;   iscc /DAppVersion=1.0.1 /DSourceDir=<staged folder> /DOutputDir=<output> OfficeFlow.iss
+;   iscc /DAppVersion=1.0.2 /DSourceDir=<staged folder> /DOutputDir=<output> OfficeFlow.iss
 ; The workspace stays in %LOCALAPPDATA%\OfficeFlow, outside {app}: installing, upgrading and
 ; uninstalling never touch it.
 
 #ifndef AppVersion
-  #define AppVersion "1.0.1"
+  #define AppVersion "1.0.2"
 #endif
 #ifndef SourceDir
   #error Pass /DSourceDir=<folder staged by build-zip.ps1>

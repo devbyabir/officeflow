@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 JAVA = os.environ.get("JAVA", "java")
 CLASSPATH = os.environ.get("OFFICEFLOW_CP", os.pathsep.join([
     str(ROOT / "server/target/classes"), str(ROOT / "server/target/dependency/*")]))
-JAR = ROOT / "server/target/officeflow-1.0.1.jar"
+JAR = ROOT / "server/target/officeflow-1.0.2.jar"
 ADMIN_PASSWORD = "test-admin"
 SAMPLE_URL = "https://devbyabir.github.io/officeflow/"
 READY_LINE = "Press Ctrl+C to stop."  # Printed after the URL, Database and Web files lines.

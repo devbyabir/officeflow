@@ -16,7 +16,7 @@ Java 17+ | JDBC | H2 | JavaScript | GitHub Pages
 
 </div>
 
-The screenshots below show the current 1.0.1 interface using fictional demo
+The screenshots below show the current interface using fictional demo
 data. The installed app uses the same workspace layout after sign-in.
 
 ![OfficeFlow dashboard](docs/images/dashboard.png)
@@ -99,7 +99,7 @@ In PowerShell, from the folder where you downloaded OfficeFlow:
 mvn -f server/pom.xml package
 ```
 
-This creates `server\target\officeflow-1.0.1.jar`. The JAR reads its web pages
+This creates `server\target\officeflow-1.0.2.jar`. The JAR reads its web pages
 from the `docs\site` folder of the same checkout, so keep the folder together.
 It finds them from any working directory as long as the JAR stays in
 `server\target`.
@@ -111,7 +111,7 @@ of your PowerShell history:
 
 ```powershell
 $env:OFFICEFLOW_ADMIN_PASSWORD = Read-Host "New OfficeFlow admin password"
-java -jar server\target\officeflow-1.0.1.jar
+java -jar server\target\officeflow-1.0.2.jar
 ```
 
 OfficeFlow prints where it is running and where the database is:
@@ -128,7 +128,7 @@ password variable disappears with it; it is only needed the first time.
 ### 3. Every later start
 
 ```powershell
-java -jar server\target\officeflow-1.0.1.jar
+java -jar server\target\officeflow-1.0.2.jar
 ```
 
 Keep the window open while OfficeFlow is in use. **To stop OfficeFlow, click the
@@ -194,7 +194,7 @@ and open it on another port. Replace the file name with your backup's name:
 $check = "$env:TEMP\officeflow-check"
 New-Item -ItemType Directory -Force $check | Out-Null
 Copy-Item "$backups\officeflow-2026-11-08-1700.mv.db" "$check\officeflow.mv.db"
-java "-Dofficeflow.db=jdbc:h2:$check\officeflow" "-Dofficeflow.port=8081" -jar server\target\officeflow-1.0.1.jar
+java "-Dofficeflow.db=jdbc:h2:$check\officeflow" "-Dofficeflow.port=8081" -jar server\target\officeflow-1.0.2.jar
 ```
 
 Open http://127.0.0.1:8081, check the stock and requests, then stop it with
@@ -223,7 +223,7 @@ Accounts, passwords, stock and request history all come back with the file.
   - Keep using it where it is:
 
     ```powershell
-    java "-Dofficeflow.db=jdbc:h2:C:/path/to/officeflow/data/officeflow" -jar server\target\officeflow-1.0.1.jar
+    java "-Dofficeflow.db=jdbc:h2:C:/path/to/officeflow/data/officeflow" -jar server\target\officeflow-1.0.2.jar
     ```
 
   - Or move it to the new default location, with OfficeFlow stopped:
