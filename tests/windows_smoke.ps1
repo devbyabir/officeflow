@@ -4,7 +4,7 @@
 # (CI runner). It refuses to run if a real workspace already exists at the default path.
 $ErrorActionPreference = "Stop"
 $repo = (Get-Location).Path
-$jar = "server\target\officeflow-1.0.1.jar"
+$jar = "server\target\officeflow-1.0.2.jar"
 $data = Join-Path $env:LOCALAPPDATA "OfficeFlow"
 $database = Join-Path $data "officeflow.mv.db"
 $temp = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
@@ -74,10 +74,10 @@ function Assert-Workspace([string]$Base, [string]$Password, [bool]$ExpectLaterSu
 try {
   # README step 2, with the password set directly because Read-Host needs a keyboard.
   $env:OFFICEFLOW_ADMIN_PASSWORD = "smoke-admin"
-  $server = Start-OfficeFlow "java -jar server\target\officeflow-1.0.1.jar"
+  $server = Start-OfficeFlow "java -jar server\target\officeflow-1.0.2.jar"
   Assert ($server.Output.Contains("Database: $database")) "prints the default database path $database"
   Assert (Test-Path $database) "creates $database"
-  Notice "First launch with 'java -jar server\target\officeflow-1.0.1.jar' created $database"
+  Notice "First launch with 'java -jar server\target\officeflow-1.0.2.jar' created $database"
   $page = Invoke-WebRequest "$($server.Base)/"
   Assert ($page.Content.Contains('<meta name="officeflow-mode" content="java" />')) "serves the Java-mode page"
 
@@ -103,7 +103,7 @@ try {
 
   # README step 3: later starts need no password.
   Remove-Item Env:OFFICEFLOW_ADMIN_PASSWORD
-  $server = Start-OfficeFlow "java -jar server\target\officeflow-1.0.1.jar"
+  $server = Start-OfficeFlow "java -jar server\target\officeflow-1.0.2.jar"
   Assert-Workspace $server.Base "smoke-teach" $false
   Notice "Reopened $database without OFFICEFLOW_ADMIN_PASSWORD; stock, history and passwords intact"
   Stop-OfficeFlow $server
@@ -118,14 +118,14 @@ try {
   $check = Join-Path $work "officeflow-check"
   New-Item -ItemType Directory -Force $check | Out-Null
   Copy-Item $backup "$check\officeflow.mv.db"
-  $server = Start-OfficeFlow "java `"-Dofficeflow.db=jdbc:h2:$check\officeflow`" `"-Dofficeflow.port=8081`" -jar server\target\officeflow-1.0.1.jar" 8081
+  $server = Start-OfficeFlow "java `"-Dofficeflow.db=jdbc:h2:$check\officeflow`" `"-Dofficeflow.port=8081`" -jar server\target\officeflow-1.0.2.jar" 8081
   Assert ($server.Output.Contains("Database: $check\officeflow.mv.db")) "the backup check opens the copy"
   Assert-Workspace $server.Base "smoke-teach" $false
   Notice "Backup copy opened on port 8081 from $check; stock, history and passwords intact"
   Stop-OfficeFlow $server
 
   # Change the live workspace after the backup, then restore as the README describes.
-  $server = Start-OfficeFlow "java -jar server\target\officeflow-1.0.1.jar"
+  $server = Start-OfficeFlow "java -jar server\target\officeflow-1.0.2.jar"
   $admin = (Invoke-Api $server.Base "/api/login" @{ id = "001"; password = "smoke-admin" }).token
   Invoke-Api $server.Base "/api/command" @{ action = "saveSupply"; data = @{
       name = "Added after backup"; category = "Stationery"; quantity = "1"; threshold = "0"; unit = "box" } } $admin | Out-Null
@@ -136,7 +136,7 @@ try {
   Rename-Item "$data\officeflow.mv.db" "officeflow-before-restore-$(Get-Date -Format yyyy-MM-dd-HHmm).mv.db"
   Copy-Item $backup "$data\officeflow.mv.db"
   Assert (@(Get-ChildItem $data -Filter "officeflow-before-restore-*.mv.db").Count -eq 1) "the pre-restore file is kept"
-  $server = Start-OfficeFlow "java -jar server\target\officeflow-1.0.1.jar"
+  $server = Start-OfficeFlow "java -jar server\target\officeflow-1.0.2.jar"
   Assert-Workspace $server.Base "smoke-teach" $false
   Notice "Restored the backup into $database; later changes are gone and the previous file was kept"
   Stop-OfficeFlow $server

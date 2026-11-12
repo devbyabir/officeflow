@@ -12,7 +12,7 @@
 #define VERSION_COMMA 1,0,0,0
 #endif
 #ifndef VERSION_TEXT
-#define VERSION_TEXT "1.0.1"
+#define VERSION_TEXT "1.0.2"
 #endif
 
 1 ICON "../icon/officeflow.ico"

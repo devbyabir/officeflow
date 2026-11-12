@@ -1,6 +1,6 @@
 # OfficeFlow End-User Terms
 
-Version 1.0, for the OfficeFlow 1.0.1 Windows installer
+Version 1.0, for the OfficeFlow 1.0.2 Windows installer
 
 These terms are between you and devbyabir, the owner of OfficeFlow. They
 explain what you may do with the official OfficeFlow Windows package. By
