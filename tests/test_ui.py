@@ -68,7 +68,7 @@ class BrowserTests(unittest.TestCase):
         notice = self.page.locator("#download-officeflow")
         expect(notice).to_have_text("Download OfficeFlow for Windows ↗")
         expect(notice).to_be_visible()
-        expect(notice).to_have_attribute("href", "https://github.com/devbyabir/officeflow/releases/tag/v1.0.0")
+        expect(notice).to_have_attribute("href", "https://github.com/devbyabir/officeflow/releases/latest")
 
     def test_theme_toggle_persists_and_updates_accessible_label(self):
         page = self.page

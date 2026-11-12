@@ -81,7 +81,7 @@ jobs:
           if (-not (Test-Path $iscc)) { throw "ISCC.exe not found" }
           "ISCC=$iscc" >> $env:GITHUB_ENV
           Write-Output "::notice title=Inno Setup::$((Get-Item $iscc).VersionInfo.ProductVersion)"
-      # The release installer, plus a 1.0.1 build of the same files used only to test upgrades.
+      # The release installer, plus a 1.0.2 build of the same files used only to test upgrades.
       - name: Build the installer
         shell: pwsh
         run: |
@@ -92,7 +92,7 @@ jobs:
           $upgrade = Join-Path $env:RUNNER_TEMP "upgrade-test"
           & $env:ISCC "/DAppVersion=$version" "/DSourceDir=$stage" "/DOutputDir=$out" $script
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
-          & $env:ISCC "/DAppVersion=1.0.1" "/DSourceDir=$stage" "/DOutputDir=$upgrade" $script
+          & $env:ISCC "/DAppVersion=1.0.2" "/DSourceDir=$stage" "/DOutputDir=$upgrade" $script
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed (upgrade test build)" }
           $setup = Get-Item (Join-Path $out "OfficeFlow-Setup-$version-x64.exe")
           $hash = (Get-FileHash -Algorithm SHA256 $setup.FullName).Hash.ToLowerInvariant()
@@ -102,7 +102,7 @@ jobs:
           Write-Output "::notice title=Installer::$($setup.Name) ($([math]::Round($setup.Length / 1MB, 1)) MB) SHA-256 $hash"
           Write-Output "::notice title=Signatures::$($signatures -join '; ')"
           "SETUP=$($setup.FullName)" >> $env:GITHUB_ENV
-          "UPGRADE_SETUP=$(Join-Path $upgrade 'OfficeFlow-Setup-1.0.1-x64.exe')" >> $env:GITHUB_ENV
+          "UPGRADE_SETUP=$(Join-Path $upgrade 'OfficeFlow-Setup-1.0.2-x64.exe')" >> $env:GITHUB_ENV
       - name: Test install, Start menu setup, saving an item, quit, restart, upgrade and uninstall
         shell: pwsh
         run: ./tests/windows_installer_test.ps1 -Installer $env:SETUP -UpgradeInstaller $env:UPGRADE_SETUP

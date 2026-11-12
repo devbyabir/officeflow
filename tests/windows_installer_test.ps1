@@ -110,7 +110,7 @@ try {
   Assert ($link.IconLocation -eq "$exe,0") "the Start menu shortcut uses OfficeFlow.exe's embedded icon ($($link.IconLocation))"
   $quitLink = $shell.CreateShortcut($quitShortcut)
   Assert ($quitLink.TargetPath -eq $exe -and $quitLink.Arguments -eq "--quit") "the Quit OfficeFlow shortcut runs OfficeFlow.exe --quit"
-  Assert ((Get-DisplayVersion) -eq "1.0.0") "Apps & features lists OfficeFlow 1.0.0"
+  Assert ((Get-DisplayVersion) -eq "1.0.1") "Apps & features lists OfficeFlow 1.0.1"
   # The installed terms must be TERMS.md from this commit; only CRLF versus LF may differ.
   $installedTerms = Join-Path $installDir "TERMS.txt"
   $repoTerms = Join-Path (Split-Path $PSScriptRoot -Parent) "TERMS.md"
@@ -148,12 +148,12 @@ try {
   $code = Invoke-Setup $UpgradeInstaller "upgrade-while-running"
   Assert ($code -eq 0) "the upgrade exits with code 0 (got $code)"
   Assert-CleanStop $start.Launcher $before "the upgrade's quit request"
-  Assert ((Get-DisplayVersion) -eq "1.0.1") "Apps & features lists the upgraded version 1.0.1"
+  Assert ((Get-DisplayVersion) -eq "1.0.2") "Apps & features lists the upgraded version 1.0.2"
   $start = Start-FromShortcut
   Assert ($start.Url -eq "$base/") "after the upgrade OfficeFlow opens sign-in"
   Assert ((Get-Supplies) -contains "Installer check paper") "the item and the admin account survive the upgrade"
   Stop-FromShortcut $start.Launcher
-  Notice "Upgrade to 1.0.1 while OfficeFlow ran: setup stopped it cleanly first (clean stop logged), exit code 0; admin account and item still there; quit cleanly"
+  Notice "Upgrade to 1.0.2 while OfficeFlow ran: setup stopped it cleanly first (clean stop logged), exit code 0; admin account and item still there; quit cleanly"
 
   # Reinstall with OfficeFlow stopped: the workspace file is not touched.
   $hashBefore = (Get-FileHash $database).Hash

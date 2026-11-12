@@ -8,7 +8,7 @@ An inventory and requisition workspace for one office, rebuilt from my
 third-semester Java final project at Zhengzhou University.
 
 <a href="https://devbyabir.github.io/officeflow/"><img src="https://img.shields.io/badge/Live_Demo-sample_data-3B5BDB?style=for-the-badge&amp;logo=githubpages&amp;logoColor=white" alt="Live Demo with sample data"></a>
-[![DOWNLOAD FOR WINDOWS](https://img.shields.io/badge/%EF%A3%BF-DOWNLOAD%20FOR%20WINDOWS-darkgreen?style=for-the-badge)](https://github.com/devbyabir/officeflow/releases/tag/v1.0.0)
+[![DOWNLOAD FOR WINDOWS](https://img.shields.io/badge/%EF%A3%BF-DOWNLOAD%20FOR%20WINDOWS-darkgreen?style=for-the-badge)](https://github.com/devbyabir/officeflow/releases/latest)
 
 [![Application checks](https://github.com/devbyabir/officeflow/actions/workflows/checks.yml/badge.svg)](https://github.com/devbyabir/officeflow/actions/workflows/checks.yml)
 
@@ -37,17 +37,16 @@ the same computer and browser, signing in and out in turn. The server only
 accepts connections from that computer; other computers on the network cannot
 reach it. Your records are saved in a database file on that computer.
 
-The Windows installer is on the [OfficeFlow 1.0.0 release page](https://github.com/devbyabir/officeflow/releases/tag/v1.0.0).
+The Windows installer is on the [latest release page](https://github.com/devbyabir/officeflow/releases/latest).
 You can also try the [Live Demo](https://devbyabir.github.io/officeflow/) with
 sample data before downloading.
-The published 1.0.0 installer predates the account hint and recovery flow in
-the current source. Those changes require a new Windows release before people
-who download the app can use them.
+The 1.0.0 installer predates the account hint and recovery flow. Use version
+1.0.1 or newer for the new Create account screen, hints and recovery codes.
 
 The installer includes its own Java runtime, so nothing else needs to be
 installed first. It needs Windows 10 or 11 (x64).
 
-**Windows security:** the published 1.0.0 installer is unsigned. Windows 11
+**Windows security:** the Windows installer is unsigned. Windows 11
 Smart App Control can block the installer, launcher, or uninstaller because it
 cannot verify the publisher. GitHub hosting and SHA-256 checksums do not make
 an unsigned executable trusted. A release for Smart App Control On needs
@@ -97,7 +96,7 @@ In PowerShell, from the folder where you downloaded OfficeFlow:
 mvn -f server/pom.xml package
 ```
 
-This creates `server\target\officeflow-1.0.0.jar`. The JAR reads its web pages
+This creates `server\target\officeflow-1.0.1.jar`. The JAR reads its web pages
 from the `docs\site` folder of the same checkout, so keep the folder together.
 It finds them from any working directory as long as the JAR stays in
 `server\target`.
@@ -109,7 +108,7 @@ of your PowerShell history:
 
 ```powershell
 $env:OFFICEFLOW_ADMIN_PASSWORD = Read-Host "New OfficeFlow admin password"
-java -jar server\target\officeflow-1.0.0.jar
+java -jar server\target\officeflow-1.0.1.jar
 ```
 
 OfficeFlow prints where it is running and where the database is:
@@ -126,7 +125,7 @@ password variable disappears with it; it is only needed the first time.
 ### 3. Every later start
 
 ```powershell
-java -jar server\target\officeflow-1.0.0.jar
+java -jar server\target\officeflow-1.0.1.jar
 ```
 
 Keep the window open while OfficeFlow is in use. **To stop OfficeFlow, click the
@@ -192,7 +191,7 @@ and open it on another port. Replace the file name with your backup's name:
 $check = "$env:TEMP\officeflow-check"
 New-Item -ItemType Directory -Force $check | Out-Null
 Copy-Item "$backups\officeflow-2026-11-08-1700.mv.db" "$check\officeflow.mv.db"
-java "-Dofficeflow.db=jdbc:h2:$check\officeflow" "-Dofficeflow.port=8081" -jar server\target\officeflow-1.0.0.jar
+java "-Dofficeflow.db=jdbc:h2:$check\officeflow" "-Dofficeflow.port=8081" -jar server\target\officeflow-1.0.1.jar
 ```
 
 Open http://127.0.0.1:8081, check the stock and requests, then stop it with
@@ -221,7 +220,7 @@ Accounts, passwords, stock and request history all come back with the file.
   - Keep using it where it is:
 
     ```powershell
-    java "-Dofficeflow.db=jdbc:h2:C:/path/to/officeflow/data/officeflow" -jar server\target\officeflow-1.0.0.jar
+    java "-Dofficeflow.db=jdbc:h2:C:/path/to/officeflow/data/officeflow" -jar server\target\officeflow-1.0.1.jar
     ```
 
   - Or move it to the new default location, with OfficeFlow stopped:
